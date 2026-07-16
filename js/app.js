@@ -4,10 +4,11 @@
     currentLutIndex: -1,
     sourceImage: null,
     compareMode: false,
+    sortFav: false,
     favorites: JSON.parse(localStorage.getItem('lutFavorites') || '[]'),
   };
 
-  const elements = {
+  const els = {
     canvas: document.getElementById('previewCanvas'),
     container: document.getElementById('canvasContainer'),
     placeholder: document.getElementById('placeholder'),
@@ -15,53 +16,83 @@
     lutSearch: document.getElementById('lutSearch'),
     imageInput: document.getElementById('imageInput'),
     toggleCompareBtn: document.getElementById('toggleCompareBtn'),
-    resetViewBtn: document.getElementById('resetViewBtn'),
+    fitViewBtn: document.getElementById('fitViewBtn'),
     loadLutDirBtn: document.getElementById('loadLutDirBtn'),
     statusText: document.getElementById('statusText'),
+    lutCount: document.getElementById('lutCount'),
+    infoBar: document.getElementById('infoBar'),
+    lutInfoName: document.getElementById('lutInfoName'),
+    lutInfoMeta: document.getElementById('lutInfoMeta'),
+    sortFavBtn: document.getElementById('sortFavBtn'),
   };
 
-  let ctx = elements.canvas.getContext('2d');
-  let cachedOriginalData = null;
+  let ctx = els.canvas.getContext('2d');
+  let resizeTimer = null;
 
-  elements.lutSearch.addEventListener('input', renderLutList);
+  /* ── Thumbnail generation ── */
 
-  elements.imageInput.addEventListener('change', async (e) => {
+  function generateThumbnail(lut) {
+    const size = 16;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const cx = c.getContext('2d');
+    const imgData = cx.createImageData(size, size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        const r = x / (size - 1);
+        const g = y / (size - 1);
+        const b = 0.5 + 0.5 * Math.sin((x + y) / size * Math.PI);
+        const [or, og, ob] = LUTParser.sampleLUT(lut, r, g, b);
+        imgData.data[i]     = Math.round(or * 255);
+        imgData.data[i + 1] = Math.round(og * 255);
+        imgData.data[i + 2] = Math.round(ob * 255);
+        imgData.data[i + 3] = 255;
+      }
+    }
+    cx.putImageData(imgData, 0, 0);
+    return c;
+  }
+
+  /* ── Events ── */
+
+  els.lutSearch.addEventListener('input', renderLutList);
+
+  els.imageInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     await loadImage(file);
   });
 
-  elements.container.addEventListener('dragover', (e) => {
+  els.container.addEventListener('dragover', (e) => {
     e.preventDefault();
-    elements.container.style.outline = '2px dashed var(--accent)';
+    els.container.style.outline = '2px dashed var(--accent)';
   });
 
-  elements.container.addEventListener('dragleave', () => {
-    elements.container.style.outline = '';
+  els.container.addEventListener('dragleave', () => {
+    els.container.style.outline = '';
   });
 
-  elements.container.addEventListener('drop', async (e) => {
+  els.container.addEventListener('drop', async (e) => {
     e.preventDefault();
-    elements.container.style.outline = '';
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const imgFile = Array.from(files).find(f => f.type.startsWith('image/'));
-      if (imgFile) await loadImage(imgFile);
-    }
+    els.container.style.outline = '';
+    const imgFile = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
+    if (imgFile) await loadImage(imgFile);
   });
 
-  elements.toggleCompareBtn.addEventListener('click', () => {
+  els.toggleCompareBtn.addEventListener('click', () => {
     state.compareMode = !state.compareMode;
-    elements.toggleCompareBtn.textContent = state.compareMode ? '退出对比' : '对比模式';
+    els.toggleCompareBtn.textContent = state.compareMode ? '退出对比' : '对比模式';
     renderPreview();
   });
 
-  elements.resetViewBtn.addEventListener('click', () => {
+  els.fitViewBtn.addEventListener('click', () => {
     fitCanvas();
     renderPreview();
   });
 
-  elements.loadLutDirBtn.addEventListener('click', () => {
+  els.loadLutDirBtn.addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.webkitdirectory = true;
@@ -81,6 +112,20 @@
     input.click();
   });
 
+  els.sortFavBtn.addEventListener('click', () => {
+    state.sortFav = !state.sortFav;
+    els.sortFavBtn.style.color = state.sortFav ? '#ffd700' : '';
+    renderLutList();
+  });
+
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      fitCanvas();
+      renderPreview();
+    }, 150);
+  });
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -88,45 +133,54 @@
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       selectLut(state.currentLutIndex - 1);
+    } else if ((e.key === 'f' || e.key === 'F') && state.currentLutIndex >= 0) {
+      toggleFavorite(state.luts[state.currentLutIndex].name);
     }
   });
+
+  /* ── Image loading ── */
 
   async function loadImage(file) {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
-      state.sourceImage = img;
-      fitCanvas();
-      renderPreview();
-      setStatus(`已加载: ${file.name}`);
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    state.sourceImage = img;
+    fitCanvas();
+    renderPreview();
+    setStatus(`${file.name}`);
+    URL.revokeObjectURL(url);
   }
 
   function fitCanvas() {
     if (!state.sourceImage) return;
-    const rect = elements.container.getBoundingClientRect();
-    const maxW = rect.width - 20;
-    const maxH = rect.height - 20;
+    const rect = els.container.getBoundingClientRect();
+    const pad = 20;
+    const maxW = rect.width - pad;
+    const maxH = rect.height - pad;
     const scale = Math.min(maxW / state.sourceImage.width, maxH / state.sourceImage.height, 1);
     const w = Math.floor(state.sourceImage.width * scale);
     const h = Math.floor(state.sourceImage.height * scale);
-    elements.canvas.width = w;
-    elements.canvas.height = h;
-    elements.canvas.style.display = 'block';
-    elements.placeholder.style.display = 'none';
+    els.canvas.width = w;
+    els.canvas.height = h;
+    els.canvas.style.display = 'block';
+    els.placeholder.style.display = 'none';
   }
+
+  /* ── Preview rendering ── */
 
   function renderPreview() {
     if (!state.sourceImage) return;
     const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
 
-    ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-    ctx.drawImage(state.sourceImage, 0, 0, elements.canvas.width, elements.canvas.height);
+    ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
+    ctx.drawImage(state.sourceImage, 0, 0, els.canvas.width, els.canvas.height);
 
     if (lut) {
-      const imageData = ctx.getImageData(0, 0, elements.canvas.width, elements.canvas.height);
+      const imageData = ctx.getImageData(0, 0, els.canvas.width, els.canvas.height);
       if (state.compareMode) {
         LUTApply.applyLUTWithSplit(imageData, lut, 0.5);
       } else {
@@ -135,34 +189,29 @@
       ctx.putImageData(imageData, 0, 0);
 
       if (state.compareMode) {
-        ctx.strokeStyle = 'var(--accent)';
+        ctx.save();
+        ctx.strokeStyle = '#e94560';
         ctx.lineWidth = 2;
-        ctx.setLineDash([6, 4]);
-        const splitX = elements.canvas.width / 2;
+        ctx.setLineDash([8, 5]);
+        const splitX = els.canvas.width / 2;
         ctx.beginPath();
         ctx.moveTo(splitX, 0);
-        ctx.lineTo(splitX, elements.canvas.height);
+        ctx.lineTo(splitX, els.canvas.height);
         ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'var(--accent)';
-        ctx.font = '13px sans-serif';
+        ctx.fillStyle = 'rgba(233,69,96,0.85)';
+        ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('LUT', splitX / 2, 20);
-        ctx.fillText('原始', splitX + splitX / 2, 20);
+        ctx.fillText('LUT', splitX / 2, 18);
+        ctx.fillText('原始', splitX + splitX / 2, 18);
+        ctx.restore();
       }
     }
 
-    updateStatusLut();
+    updateInfoBar();
+    updateButtons();
   }
 
-  function updateStatusLut() {
-    if (state.currentLutIndex >= 0) {
-      const lut = state.luts[state.currentLutIndex];
-      setStatus(`${lut.name}  (${state.currentLutIndex + 1}/${state.luts.length})`);
-    } else if (state.sourceImage) {
-      setStatus('请选择一个 LUT');
-    }
-  }
+  /* ── LUT loading ── */
 
   async function loadLutFiles(files) {
     state.luts = [];
@@ -171,44 +220,69 @@
     for (const file of files) {
       try {
         const lut = await LUTParser.parseLUT(file);
+        lut.thumb = generateThumbnail(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${file.name}`, err);
       }
     }
 
-    state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
     renderLutList();
     if (state.luts.length > 0) {
       selectLut(0);
     }
-    setStatus(`已加载 ${state.luts.length} 个 LUT`);
+    els.lutCount.textContent = `${state.luts.length} 个 LUT`;
+    updateButtons();
   }
 
-  function renderLutList() {
-    const keyword = elements.lutSearch.value.trim().toLowerCase();
-    const filtered = keyword
-      ? state.luts.filter(l => l.name.toLowerCase().includes(keyword))
-      : state.luts;
+  /* ── LUT list ── */
 
-    elements.lutList.innerHTML = filtered.map((lut, idx) => {
+  function renderLutList() {
+    const keyword = els.lutSearch.value.trim().toLowerCase();
+    let filtered = state.luts;
+
+    if (keyword) {
+      filtered = filtered.filter(l => l.name.toLowerCase().includes(keyword));
+    }
+
+    if (state.sortFav) {
+      filtered = [...filtered].sort((a, b) => {
+        const af = state.favorites.includes(a.name) ? 0 : 1;
+        const bf = state.favorites.includes(b.name) ? 0 : 1;
+        return af - bf;
+      });
+    }
+
+    if (filtered.length === 0) {
+      els.lutList.innerHTML = `<div class="empty-state"><p>${keyword ? '无匹配 LUT' : '尚未加载 LUT'}</p></div>`;
+      return;
+    }
+
+    els.lutList.innerHTML = filtered.map((lut) => {
       const realIdx = state.luts.indexOf(lut);
       const isActive = realIdx === state.currentLutIndex;
       const isFav = state.favorites.includes(lut.name);
       return `<div class="lut-item ${isActive ? 'active' : ''}" data-index="${realIdx}">
-        <span class="lut-name">${lut.name}</span>
-        <span class="lut-badge">${lut.size}</span>
+        <div class="lut-thumb"></div>
+        <div class="lut-info">
+          <span class="lut-name">${escHtml(lut.name)}</span>
+          <span class="lut-meta">${lut.size}³  ${lut.type}</span>
+        </div>
         <button class="favorite-btn ${isFav ? 'active' : ''}" data-lutname="${lut.name}">${isFav ? '★' : '☆'}</button>
       </div>`;
     }).join('');
 
-    elements.lutList.querySelectorAll('.lut-item').forEach(el => {
-      el.addEventListener('click', () => {
-        selectLut(parseInt(el.dataset.index, 10));
-      });
+    els.lutList.querySelectorAll('.lut-item').forEach(el => {
+      const idx = parseInt(el.dataset.index, 10);
+      const thumbDiv = el.querySelector('.lut-thumb');
+      if (thumbDiv && state.luts[idx] && state.luts[idx].thumb) {
+        thumbDiv.appendChild(state.luts[idx].thumb.cloneNode(true));
+      }
+      el.addEventListener('click', () => selectLut(idx));
     });
 
-    elements.lutList.querySelectorAll('.favorite-btn').forEach(btn => {
+    els.lutList.querySelectorAll('.favorite-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleFavorite(btn.dataset.lutname);
@@ -216,16 +290,20 @@
     });
   }
 
+  /* ── Selection ── */
+
   function selectLut(index) {
     if (index < 0 || index >= state.luts.length) return;
     state.currentLutIndex = index;
     renderLutList();
     renderPreview();
-    const el = elements.lutList.querySelector(`.lut-item[data-index="${index}"]`);
+    const el = els.lutList.querySelector(`.lut-item[data-index="${index}"]`);
     if (el) {
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }
+
+  /* ── Favorites ── */
 
   function toggleFavorite(name) {
     const idx = state.favorites.indexOf(name);
@@ -238,7 +316,39 @@
     renderLutList();
   }
 
+  /* ── Info bar ── */
+
+  function updateInfoBar() {
+    if (state.currentLutIndex >= 0) {
+      const lut = state.luts[state.currentLutIndex];
+      els.lutInfoName.textContent = lut.name;
+      els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
+      els.infoBar.style.display = 'flex';
+    } else {
+      els.infoBar.style.display = 'none';
+    }
+  }
+
+  /* ── Buttons state ── */
+
+  function updateButtons() {
+    const hasLut = state.luts.length > 0;
+    const hasImage = !!state.sourceImage;
+    els.toggleCompareBtn.disabled = !(hasLut && hasImage);
+    els.fitViewBtn.disabled = !hasImage;
+  }
+
+  /* ── Status ── */
+
   function setStatus(msg) {
-    elements.statusText.textContent = msg;
+    els.statusText.textContent = msg;
+  }
+
+  /* ── Helpers ── */
+
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
   }
 })();

@@ -9,62 +9,107 @@
   --bg-secondary: #16213e;
   --bg-surface: #0f3460;
   --text-primary: #e8e8e8;
-  --text-secondary: #a0a0b0;
+  --text-secondary: #8899aa;
   --accent: #e94560;
   --accent-hover: #ff6b81;
   --border: #2a2a4a;
-  --sidebar-width: 280px;
+  --sidebar-width: 300px;
+  --header-height: 52px;
+  --toolbar-height: 42px;
+  --infobar-height: 36px;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   height: 100vh;
   overflow: hidden;
+  font-size: 14px;
 }
 
 header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 0 20px;
+  height: var(--header-height);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
 }
 
 header h1 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.lut-count {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 5px;
+  padding: 5px 12px;
   background: var(--bg-surface);
   color: var(--text-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
-  font-size: 13px;
-  transition: background 0.2s;
+  font-size: 12px;
+  transition: all 0.15s;
+  user-select: none;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
 }
 
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-icon {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.btn-icon:hover {
+  color: #ffd700;
+  border-color: var(--border);
+}
+
 .main-layout {
   display: flex;
-  height: calc(100vh - 52px);
+  height: calc(100vh - var(--header-height));
 }
 
 .lut-sidebar {
@@ -77,14 +122,23 @@ header h1 {
 }
 
 .sidebar-header {
-  padding: 12px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-.sidebar-header h2 {
-  font-size: 14px;
-  font-weight: 600;
+.sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.sidebar-title-row h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 #lutSearch {
@@ -94,12 +148,17 @@ header h1 {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
 }
 
 #lutSearch:focus {
-  outline: none;
   border-color: var(--accent);
+}
+
+#lutSearch::placeholder {
+  color: #555;
 }
 
 .lut-list {
@@ -108,39 +167,104 @@ header h1 {
   padding: 4px 0;
 }
 
+.lut-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lut-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lut-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.6;
+  font-size: 13px;
+}
+
 .lut-item {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 6px 12px;
   cursor: pointer;
-  font-size: 13px;
-  transition: background 0.15s;
+  font-size: 12px;
+  transition: background 0.12s;
   border-left: 3px solid transparent;
   gap: 8px;
+  min-height: 36px;
 }
 
 .lut-item:hover {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.04);
 }
 
 .lut-item.active {
-  background: rgba(233,69,96,0.15);
+  background: rgba(233,69,96,0.12);
   border-left-color: var(--accent);
 }
 
-.lut-item .lut-name {
+.lut-item .lut-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.lut-item .lut-thumb canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.lut-item .lut-info {
   flex: 1;
+  min-width: 0;
+}
+
+.lut-item .lut-name {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
-.lut-item .lut-badge {
+.lut-item .lut-meta {
+  display: block;
   font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--bg-surface);
   color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.lut-item .favorite-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #444;
+  padding: 0 2px;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.lut-item .favorite-btn.active {
+  color: #ffd700;
+}
+
+.lut-item .favorite-btn:hover {
+  color: #ffd700;
 }
 
 .preview-area {
@@ -148,21 +272,25 @@ header h1 {
   display: flex;
   flex-direction: column;
   position: relative;
+  min-width: 0;
 }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 0 12px;
+  height: var(--toolbar-height);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .status-text {
   margin-left: auto;
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .canvas-container {
@@ -172,7 +300,8 @@ header h1 {
   justify-content: center;
   position: relative;
   overflow: hidden;
-  background: repeating-conic-gradient(#1e1e2e 0% 25%, #25253a 0% 50%) 0 0 / 20px 20px;
+  background:
+    repeating-conic-gradient(#1e1e2e 0% 25%, #25253a 0% 50%) 0 0 / 20px 20px;
 }
 
 #previewCanvas {
@@ -180,26 +309,52 @@ header h1 {
   max-height: 100%;
   object-fit: contain;
   display: none;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.4);
+  border-radius: 2px;
 }
 
 .placeholder {
   color: var(--text-secondary);
   text-align: center;
+  user-select: none;
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
 }
 
 .placeholder p {
-  font-size: 16px;
+  font-size: 15px;
+  margin-bottom: 4px;
 }
 
-.lut-item .favorite-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
+.placeholder-sub {
+  font-size: 12px !important;
+  opacity: 0.6;
+}
+
+.info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: var(--infobar-height);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
   color: var(--text-secondary);
-  padding: 0 2px;
+  flex-shrink: 0;
 }
 
-.lut-item .favorite-btn.active {
-  color: #ffd700;
+#lutInfoName {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 220px;
+  }
 }
