@@ -43,6 +43,19 @@ class LUTWebGL {
       uniform float u_lutSize;
       uniform float u_compare;
       uniform float u_splitX;
+      uniform float u_isVLT;
+
+      vec3 srgbToLinear(vec3 c) {
+        bvec3 lo = lessThanEqual(c, vec3(0.04045));
+        vec3 lin = c / 12.92;
+        vec3 gamma = pow((c + 0.055) / 1.055, vec3(2.4));
+        return mix(gamma, lin, vec3(lo));
+      }
+
+      vec3 linearToVLog(vec3 l) {
+        vec3 lo = mix(5.6 * l + 0.125, 0.241514 * log(l + 0.00873) / log(10.0) + 0.598206, step(vec3(0.01), l));
+        return lo;
+      }
 
       void main() {
         vec4 color = texture(u_image, v_uv);
@@ -50,7 +63,12 @@ class LUTWebGL {
           fragColor = color;
           return;
         }
-        vec3 lutCoord = color.rgb * (u_lutSize - 1.0) / u_lutSize + 0.5 / u_lutSize;
+        vec3 inputColor = color.rgb;
+        if (u_isVLT > 0.5) {
+          vec3 lin = srgbToLinear(inputColor);
+          inputColor = linearToVLog(lin);
+        }
+        vec3 lutCoord = inputColor * (u_lutSize - 1.0) / u_lutSize + 0.5 / u_lutSize;
         vec3 lutColor = texture(u_lut, lutCoord).rgb;
         fragColor = vec4(lutColor, color.a);
       }`;
@@ -76,6 +94,7 @@ class LUTWebGL {
     this.locLutSize = gl.getUniformLocation(program, 'u_lutSize');
     this.locCompare = gl.getUniformLocation(program, 'u_compare');
     this.locSplitX = gl.getUniformLocation(program, 'u_splitX');
+    this.locIsVLT = gl.getUniformLocation(program, 'u_isVLT');
   }
 
   compileShader(type, src) {
@@ -159,6 +178,7 @@ class LUTWebGL {
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
 
     this.currentLutSize = size;
+    this.currentLutType = lut.type;
   }
 
   render(width, height, compareMode) {
@@ -184,6 +204,7 @@ class LUTWebGL {
 
     gl.uniform1f(this.locCompare, compareMode ? 1.0 : 0.0);
     gl.uniform1f(this.locSplitX, width / 2);
+    gl.uniform1f(this.locIsVLT, this.currentLutType === 'vlt' ? 1.0 : 0.0);
 
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
