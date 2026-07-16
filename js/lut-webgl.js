@@ -13,10 +13,12 @@ class LUTWebGL {
       if (!gl) throw new Error('WebGL 2 not supported');
       this.gl = gl;
       this.initShaders();
+      if (!this.program) throw new Error('shader init failed');
       this.initGeometry();
       this.supported = true;
+      console.log('[WebGL] 初始化成功');
     } catch (e) {
-      console.warn('[WebGL] 不支持 WebGL 2.0，将使用 CPU 渲染:', e.message);
+      console.warn('[WebGL] 不可用，使用 CPU 渲染:', e.message);
     }
   }
 

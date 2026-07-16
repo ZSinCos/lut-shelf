@@ -213,18 +213,20 @@
     }
 
     try {
+      let webglOk = false;
+
       if (useWebgl && webgl && lut) {
         webgl.resize(w, h);
         webgl.uploadImage(state.sourceImage);
         webgl.uploadLUT(lut);
-        const rendered = webgl.render(w, h, state.compareMode);
-        ctx.clearRect(0, 0, w, h);
-        if (rendered) {
+        webglOk = webgl.render(w, h, state.compareMode);
+        if (webglOk) {
+          ctx.clearRect(0, 0, w, h);
           ctx.drawImage(webglCanvas, 0, 0);
-        } else {
-          ctx.drawImage(state.sourceImage, 0, 0, w, h);
         }
-      } else {
+      }
+
+      if (!webglOk) {
         ctx.clearRect(0, 0, w, h);
         ctx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
 
