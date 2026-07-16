@@ -194,12 +194,10 @@
 
     if (w === 0 || h === 0) return;
 
-    if (useWebgl && webgl) {
+    if (useWebgl && webgl && lut) {
       webgl.resize(w, h);
       webgl.uploadImage(state.sourceImage);
-      if (lut) {
-        webgl.uploadLUT(lut);
-      }
+      webgl.uploadLUT(lut);
       webgl.render(w, h, state.compareMode);
       ctx.clearRect(0, 0, w, h);
       ctx.drawImage(webglCanvas, 0, 0);
