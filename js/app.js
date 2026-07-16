@@ -27,7 +27,21 @@
   };
 
   let ctx = els.canvas.getContext('2d');
+  let webglCanvas = null;
+  let webgl = null;
+  let useWebgl = false;
   let resizeTimer = null;
+
+  function initWebGL() {
+    webglCanvas = document.createElement('canvas');
+    webgl = new LUTWebGL(webglCanvas);
+    useWebgl = webgl.supported;
+    if (useWebgl) {
+      console.log('[App] 使用 WebGL 加速渲染');
+    }
+  }
+
+  initWebGL();
 
   /* ── Thumbnail generation ── */
 
@@ -175,36 +189,51 @@
   function renderPreview() {
     if (!state.sourceImage) return;
     const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
+    const w = els.canvas.width;
+    const h = els.canvas.height;
 
-    ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
-    ctx.drawImage(state.sourceImage, 0, 0, els.canvas.width, els.canvas.height);
+    if (w === 0 || h === 0) return;
 
-    if (lut) {
-      const imageData = ctx.getImageData(0, 0, els.canvas.width, els.canvas.height);
-      if (state.compareMode) {
-        LUTApply.applyLUTWithSplit(imageData, lut, 0.5);
-      } else {
-        LUTApply.applyLUT(imageData, lut);
+    if (useWebgl && webgl) {
+      webgl.resize(w, h);
+      webgl.uploadImage(state.sourceImage);
+      if (lut) {
+        webgl.uploadLUT(lut);
       }
-      ctx.putImageData(imageData, 0, 0);
+      webgl.render(w, h, state.compareMode);
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(webglCanvas, 0, 0);
+    } else {
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(state.sourceImage, 0, 0, w, h);
 
-      if (state.compareMode) {
-        ctx.save();
-        ctx.strokeStyle = '#e94560';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 5]);
-        const splitX = els.canvas.width / 2;
-        ctx.beginPath();
-        ctx.moveTo(splitX, 0);
-        ctx.lineTo(splitX, els.canvas.height);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(233,69,96,0.85)';
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('LUT', splitX / 2, 18);
-        ctx.fillText('原始', splitX + splitX / 2, 18);
-        ctx.restore();
+      if (lut) {
+        const imageData = ctx.getImageData(0, 0, w, h);
+        if (state.compareMode) {
+          LUTApply.applyLUTWithSplit(imageData, lut, 0.5);
+        } else {
+          LUTApply.applyLUT(imageData, lut);
+        }
+        ctx.putImageData(imageData, 0, 0);
       }
+    }
+
+    if (state.compareMode) {
+      const splitX = w / 2;
+      ctx.save();
+      ctx.strokeStyle = '#e94560';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.beginPath();
+      ctx.moveTo(splitX, 0);
+      ctx.lineTo(splitX, h);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(233,69,96,0.85)';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('LUT', splitX / 2, 18);
+      ctx.fillText('原始', splitX + splitX / 2, 18);
+      ctx.restore();
     }
 
     updateInfoBar();
@@ -322,7 +351,8 @@
     if (state.currentLutIndex >= 0) {
       const lut = state.luts[state.currentLutIndex];
       els.lutInfoName.textContent = lut.name;
-      els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
+      const engine = useWebgl ? 'WebGL' : 'CPU';
+      els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ${engine}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
       els.infoBar.style.display = 'flex';
     } else {
       els.infoBar.style.display = 'none';
