@@ -76,7 +76,12 @@
   els.imageInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    await loadImage(file);
+    try {
+      await loadImage(file);
+    } catch (err) {
+      console.error('[App] 图片加载失败:', err);
+      setStatus('图片加载失败');
+    }
   });
 
   els.container.addEventListener('dragover', (e) => {
@@ -159,9 +164,13 @@
     const url = URL.createObjectURL(file);
     await new Promise((resolve, reject) => {
       img.onload = resolve;
-      img.onerror = reject;
+      img.onerror = () => reject(new Error('图片解码失败'));
       img.src = url;
     });
+    if (!img.width || !img.height) {
+      URL.revokeObjectURL(url);
+      throw new Error('图片尺寸无效');
+    }
     state.sourceImage = img;
     fitCanvas();
     renderPreview();
@@ -172,16 +181,22 @@
   function fitCanvas() {
     if (!state.sourceImage) return;
     const rect = els.container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      console.warn('[App] 容器尺寸无效，延迟渲染');
+      setTimeout(fitCanvas, 50);
+      return;
+    }
     const pad = 20;
-    const maxW = rect.width - pad;
-    const maxH = rect.height - pad;
+    const maxW = Math.max(rect.width - pad, 100);
+    const maxH = Math.max(rect.height - pad, 100);
     const scale = Math.min(maxW / state.sourceImage.width, maxH / state.sourceImage.height, 1);
     const w = Math.floor(state.sourceImage.width * scale);
     const h = Math.floor(state.sourceImage.height * scale);
-    els.canvas.width = w;
-    els.canvas.height = h;
+    els.canvas.width = Math.max(w, 1);
+    els.canvas.height = Math.max(h, 1);
     els.canvas.style.display = 'block';
     els.placeholder.style.display = 'none';
+    console.log(`[App] 画布: ${els.canvas.width}x${els.canvas.height}, 容器: ${rect.width}x${rect.height}, 图片: ${state.sourceImage.width}x${state.sourceImage.height}`);
   }
 
   /* ── Preview rendering ── */
@@ -192,46 +207,57 @@
     const w = els.canvas.width;
     const h = els.canvas.height;
 
-    if (w === 0 || h === 0) return;
-
-    if (useWebgl && webgl && lut) {
-      webgl.resize(w, h);
-      webgl.uploadImage(state.sourceImage);
-      webgl.uploadLUT(lut);
-      webgl.render(w, h, state.compareMode);
-      ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(webglCanvas, 0, 0);
-    } else {
-      ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(state.sourceImage, 0, 0, w, h);
-
-      if (lut) {
-        const imageData = ctx.getImageData(0, 0, w, h);
-        if (state.compareMode) {
-          LUTApply.applyLUTWithSplit(imageData, lut, 0.5);
-        } else {
-          LUTApply.applyLUT(imageData, lut);
-        }
-        ctx.putImageData(imageData, 0, 0);
-      }
+    if (w === 0 || h === 0) {
+      console.warn('[App] 画布尺寸为 0，跳过渲染');
+      return;
     }
 
-    if (state.compareMode) {
-      const splitX = w / 2;
-      ctx.save();
-      ctx.strokeStyle = '#e94560';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([8, 5]);
-      ctx.beginPath();
-      ctx.moveTo(splitX, 0);
-      ctx.lineTo(splitX, h);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(233,69,96,0.85)';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('LUT', splitX / 2, 18);
-      ctx.fillText('原始', splitX + splitX / 2, 18);
-      ctx.restore();
+    try {
+      if (useWebgl && webgl && lut) {
+        webgl.resize(w, h);
+        webgl.uploadImage(state.sourceImage);
+        webgl.uploadLUT(lut);
+        const rendered = webgl.render(w, h, state.compareMode);
+        ctx.clearRect(0, 0, w, h);
+        if (rendered) {
+          ctx.drawImage(webglCanvas, 0, 0);
+        } else {
+          ctx.drawImage(state.sourceImage, 0, 0, w, h);
+        }
+      } else {
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
+
+        if (lut) {
+          const imageData = ctx.getImageData(0, 0, w, h);
+          if (state.compareMode) {
+            LUTApply.applyLUTWithSplit(imageData, lut, 0.5);
+          } else {
+            LUTApply.applyLUT(imageData, lut);
+          }
+          ctx.putImageData(imageData, 0, 0);
+        }
+      }
+
+      if (state.compareMode) {
+        const splitX = w / 2;
+        ctx.save();
+        ctx.strokeStyle = '#e94560';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 5]);
+        ctx.beginPath();
+        ctx.moveTo(splitX, 0);
+        ctx.lineTo(splitX, h);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(233,69,96,0.85)';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('LUT', splitX / 2, 18);
+        ctx.fillText('原始', splitX + splitX / 2, 18);
+        ctx.restore();
+      }
+    } catch (err) {
+      console.error('[App] 渲染错误:', err);
     }
 
     updateInfoBar();
