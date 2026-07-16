@@ -1,0 +1,26 @@
+{
+  "name": "lut-preview-tool",
+  "version": "1.0.0",
+  "description": "LUT 实时预览工具",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.lut.preview",
+    "productName": "LUT 预览工具",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "portable"
+    }
+  }
+}
