@@ -73,7 +73,7 @@ class LUTParser {
         const g = parseFloat(parts[1]);
         const b = parseFloat(parts[2]);
         if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
-          data.push([r, g, b]);
+          data.push([r / 4095, g / 4095, b / 4095]);
         }
       }
     }
@@ -102,16 +102,19 @@ class LUTParser {
     const dg = fg - ig;
     const db = fb - ib;
 
-    const idx = (ir * size + ig) * size + ib;
+    const strideG = size;
+    const strideB = size * size;
+
+    const idx = ir + ig * strideG + ib * strideB;
 
     const c000 = data[idx] || [0, 0, 0];
-    const c100 = data[Math.min(idx + size * size, data.length - 1)] || [0, 0, 0];
-    const c010 = data[Math.min(idx + size, data.length - 1)] || [0, 0, 0];
-    const c110 = data[Math.min(idx + size * size + size, data.length - 1)] || [0, 0, 0];
-    const c001 = data[Math.min(idx + 1, data.length - 1)] || [0, 0, 0];
-    const c101 = data[Math.min(idx + size * size + 1, data.length - 1)] || [0, 0, 0];
-    const c011 = data[Math.min(idx + size + 1, data.length - 1)] || [0, 0, 0];
-    const c111 = data[Math.min(idx + size * size + size + 1, data.length - 1)] || [0, 0, 0];
+    const c100 = data[Math.min(idx + 1, data.length - 1)] || [0, 0, 0];
+    const c010 = data[Math.min(idx + strideG, data.length - 1)] || [0, 0, 0];
+    const c110 = data[Math.min(idx + strideG + 1, data.length - 1)] || [0, 0, 0];
+    const c001 = data[Math.min(idx + strideB, data.length - 1)] || [0, 0, 0];
+    const c101 = data[Math.min(idx + strideB + 1, data.length - 1)] || [0, 0, 0];
+    const c011 = data[Math.min(idx + strideB + strideG, data.length - 1)] || [0, 0, 0];
+    const c111 = data[Math.min(idx + strideB + strideG + 1, data.length - 1)] || [0, 0, 0];
 
     const lerp = (a, b, t) => a + (b - a) * t;
 
