@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LUT 预览工具</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>LUT 预览工具</h1>
+      <div class="header-actions">
+        <button id="loadLutDirBtn" title="加载 LUT 目录">📂 加载 LUT</button>
+      </div>
+    </header>
+
+    <main class="main-layout">
+      <!-- 左侧：LUT 列表 -->
+      <aside class="lut-sidebar">
+        <div class="sidebar-header">
+          <h2>LUT 列表</h2>
+          <input type="text" id="lutSearch" placeholder="搜索 LUT..." />
+        </div>
+        <div id="lutList" class="lut-list"></div>
+      </aside>
+
+      <!-- 右侧：预览区域 -->
+      <section class="preview-area">
+        <div class="toolbar">
+          <label class="btn">
+            上传图片
+            <input type="file" id="imageInput" accept="image/*" hidden />
+          </label>
+          <button id="toggleCompareBtn" class="btn">对比模式</button>
+          <button id="resetViewBtn" class="btn">重置视图</button>
+          <span id="statusText" class="status-text"></span>
+        </div>
+        <div class="canvas-container" id="canvasContainer">
+          <canvas id="previewCanvas"></canvas>
+          <div class="placeholder" id="placeholder">
+            <p>请上传参考图片开始预览</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/lut-parser.js"></script>
+  <script src="js/lut-apply.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
