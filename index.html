@@ -18,17 +18,45 @@
 
     <main class="main-layout">
       <aside class="lut-sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-title-row">
-            <h2>LUT 列表</h2>
-            <button id="sortFavBtn" class="btn-icon" title="按收藏排序">★</button>
-          </div>
-          <input type="text" id="lutSearch" placeholder="搜索 LUT..." />
+        <div class="sidebar-tabs">
+          <button id="browseTabBtn" class="sidebar-tab active">浏览</button>
+          <button id="repoTabBtn" class="sidebar-tab">仓库</button>
         </div>
-        <div id="lutList" class="lut-list">
-          <div class="empty-state">
-            <p>点击上方「加载 LUT」<br/>选择 LUT 文件夹</p>
+        <div id="browseTab" class="sidebar-tab-content">
+          <div class="sidebar-header">
+            <div class="sidebar-title-row">
+              <h2>LUT 列表</h2>
+              <button id="sortFavBtn" class="btn-icon" title="按收藏排序">★</button>
+            </div>
+            <input type="text" id="lutSearch" placeholder="搜索 LUT..." />
           </div>
+          <div id="lutList" class="lut-list">
+            <div class="empty-state">
+              <p>点击上方「加载 LUT」<br/>选择 LUT 文件夹</p>
+            </div>
+          </div>
+        </div>
+        <div id="repoTab" class="sidebar-tab-content" style="display:none">
+          <div class="sidebar-header">
+            <div class="sidebar-title-row">
+              <h2>LUT 仓库</h2>
+              <div class="repo-header-actions">
+                <button id="repoAddGroupBtn" class="btn btn-small" title="新建分组">＋分组</button>
+                <button id="repoImportBtn" class="btn btn-small" title="导入 LUT">＋导入</button>
+              </div>
+            </div>
+          </div>
+          <div class="repo-groups" id="repoGroupTree">
+            <div class="repo-group-item active" data-group-id="__all">
+              <span class="repo-group-icon">📁</span> 全部
+              <span class="repo-group-count" id="repoCountAll">0</span>
+            </div>
+            <div class="repo-group-item" data-group-id="__none">
+              <span class="repo-group-icon">📄</span> 未分类
+              <span class="repo-group-count" id="repoCountNone">0</span>
+            </div>
+          </div>
+          <div id="repoLutGrid" class="repo-lut-grid"></div>
         </div>
       </aside>
 
@@ -79,6 +107,44 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="repoEditModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="editModalTitle">编辑 LUT</h3>
+        <button id="editModalClose" class="btn-icon">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>显示名称</label>
+          <input type="text" id="editDisplayName" class="form-input" />
+        </div>
+        <div class="form-row">
+          <label>分组</label>
+          <select id="editGroupId" class="form-input"></select>
+        </div>
+        <div class="form-row">
+          <label>评分</label>
+          <div class="star-rating" id="editRating">
+            <span class="star" data-val="1">☆</span>
+            <span class="star" data-val="2">☆</span>
+            <span class="star" data-val="3">☆</span>
+            <span class="star" data-val="4">☆</span>
+            <span class="star" data-val="5">☆</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>备注</label>
+          <textarea id="editNote" class="form-input form-textarea" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="editDeleteBtn" class="btn btn-danger">删除</button>
+        <button id="editCancelBtn" class="btn">取消</button>
+        <button id="editSaveBtn" class="btn btn-primary">保存</button>
+      </div>
+    </div>
   </div>
 
   <script src="js/lut-parser.js"></script>

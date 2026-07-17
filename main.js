@@ -1,10 +1,13 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const exifr = require('exifr');
 
 let mainWindow;
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
+const REPO_DIR = path.join(app.getPath('userData'), 'repo');
+const REPO_META_PATH = path.join(REPO_DIR, 'repo.json');
 
 function loadConfig() {
   try {
@@ -255,3 +258,168 @@ ipcMain.handle('extract-raw-preview', async (event, filePath) => {
     return null;
   }
 });
+
+/* ── Repo helpers ── */
+
+function ensureRepoDir() {
+  if (!fs.existsSync(REPO_DIR)) {
+    fs.mkdirSync(REPO_DIR, { recursive: true });
+  }
+  const thumbsDir = path.join(REPO_DIR, 'thumbs');
+  if (!fs.existsSync(thumbsDir)) {
+    fs.mkdirSync(thumbsDir, { recursive: true });
+  }
+}
+
+function loadRepoJson() {
+  ensureRepoDir();
+  try {
+    if (fs.existsSync(REPO_META_PATH)) {
+      return JSON.parse(fs.readFileSync(REPO_META_PATH, 'utf8'));
+    }
+  } catch (e) {
+    console.error('读取repo.json失败:', e);
+  }
+  return { groups: [], luts: [] };
+}
+
+function saveRepoJson(data) {
+  ensureRepoDir();
+  fs.writeFileSync(REPO_META_PATH, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function repoLutFilePath(id) {
+  return path.join(REPO_DIR, `${id}.dat`);
+}
+
+/* ── Repo IPC handlers ── */
+
+ipcMain.handle('repo-list', async () => {
+  const data = loadRepoJson();
+  return data.luts.map(l => ({ ...l, content: undefined }));
+});
+
+ipcMain.handle('repo-groups', async () => {
+  const data = loadRepoJson();
+  return data.groups;
+});
+
+function importLutFileSync(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext !== '.vlt' && ext !== '.cube') return null;
+  const content = fs.readFileSync(filePath, 'utf8');
+  const data = loadRepoJson();
+  const id = crypto.randomUUID();
+  fs.writeFileSync(repoLutFilePath(id), content, 'utf8');
+  const fileName = path.basename(filePath);
+  const name = fileName.replace(/\.[^.]+$/, '');
+  const lut = {
+    id, fileName, displayName: name, groupId: null,
+    tags: [], rating: 0, note: '',
+    size: guessLutSize(content), type: ext.slice(1),
+    importedAt: new Date().toISOString(),
+  };
+  data.luts.push(lut);
+  saveRepoJson(data);
+  return lut;
+}
+
+ipcMain.handle('repo-import-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    title: '导入 LUT 文件',
+    filters: [{ name: 'LUT 文件', extensions: ['vlt', 'cube'] }],
+  });
+  if (result.canceled || !result.filePaths) return 0;
+  let count = 0;
+  for (const fp of result.filePaths) {
+    if (importLutFileSync(fp)) count++;
+  }
+  return count;
+});
+
+ipcMain.handle('repo-import-file', async (event, filePath) => {
+  try {
+    return importLutFileSync(filePath);
+  } catch (e) {
+    console.error('导入LUT失败:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('repo-read-file', async (event, id) => {
+  try {
+    const fp = repoLutFilePath(id);
+    if (!fs.existsSync(fp)) return null;
+    return fs.readFileSync(fp, 'utf8');
+  } catch (e) {
+    console.error('读取repo LUT失败:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('repo-update-lut', async (event, lutData) => {
+  try {
+    const data = loadRepoJson();
+    const idx = data.luts.findIndex(l => l.id === lutData.id);
+    if (idx < 0) return null;
+    Object.assign(data.luts[idx], lutData);
+    saveRepoJson(data);
+    return data.luts[idx];
+  } catch (e) {
+    console.error('更新LUT元数据失败:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('repo-delete-lut', async (event, id) => {
+  try {
+    const data = loadRepoJson();
+    data.luts = data.luts.filter(l => l.id !== id);
+    saveRepoJson(data);
+    const fp = repoLutFilePath(id);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    return true;
+  } catch (e) {
+    console.error('删除LUT失败:', e);
+    return false;
+  }
+});
+
+ipcMain.handle('repo-save-group', async (event, group) => {
+  try {
+    const data = loadRepoJson();
+    if (group.id) {
+      const idx = data.groups.findIndex(g => g.id === group.id);
+      if (idx >= 0) data.groups[idx] = group;
+      else data.groups.push({ ...group, id: crypto.randomUUID() });
+    } else {
+      group.id = crypto.randomUUID();
+      data.groups.push(group);
+    }
+    saveRepoJson(data);
+    return group;
+  } catch (e) {
+    console.error('保存分组失败:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('repo-delete-group', async (event, groupId) => {
+  try {
+    const data = loadRepoJson();
+    data.groups = data.groups.filter(g => g.id !== groupId);
+    data.luts.forEach(l => { if (l.groupId === groupId) l.groupId = null; });
+    saveRepoJson(data);
+    return true;
+  } catch (e) {
+    console.error('删除分组失败:', e);
+    return false;
+  }
+});
+
+function guessLutSize(content) {
+  const match = content.match(/LUT_3D_SIZE\s+(\d+)/i);
+  return match ? parseInt(match[1], 10) : 17;
+}

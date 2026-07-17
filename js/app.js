@@ -795,6 +795,261 @@
     els.statusText.textContent = msg;
   }
 
+  /* ── Repo ── */
+
+  let repoLuts = [];
+  let repoGroups = [];
+  let repoCurrentGroup = '__all';
+  let editingLutId = null;
+
+  if (isElectron) {
+    els.browseTabBtn = document.getElementById('browseTabBtn');
+    els.repoTabBtn = document.getElementById('repoTabBtn');
+    els.browseTab = document.getElementById('browseTab');
+    els.repoTab = document.getElementById('repoTab');
+    els.repoImportBtn = document.getElementById('repoImportBtn');
+    els.repoGroupTree = document.getElementById('repoGroupTree');
+    els.repoLutGrid = document.getElementById('repoLutGrid');
+    els.repoCountAll = document.getElementById('repoCountAll');
+    els.repoCountNone = document.getElementById('repoCountNone');
+    els.repoEditModal = document.getElementById('repoEditModal');
+    els.editModalTitle = document.getElementById('editModalTitle');
+    els.editModalClose = document.getElementById('editModalClose');
+    els.editDisplayName = document.getElementById('editDisplayName');
+    els.editGroupId = document.getElementById('editGroupId');
+    els.editNote = document.getElementById('editNote');
+    els.editDeleteBtn = document.getElementById('editDeleteBtn');
+    els.editCancelBtn = document.getElementById('editCancelBtn');
+    els.editSaveBtn = document.getElementById('editSaveBtn');
+    els.editRating = document.getElementById('editRating');
+
+    let activeTab = 'browse';
+
+    function switchTab(tab) {
+      activeTab = tab;
+      els.browseTabBtn.classList.toggle('active', tab === 'browse');
+      els.repoTabBtn.classList.toggle('active', tab === 'repo');
+      els.browseTab.style.display = tab === 'browse' ? '' : 'none';
+      els.repoTab.style.display = tab === 'repo' ? '' : 'none';
+      if (tab === 'repo') loadRepoList();
+    }
+
+    els.browseTabBtn.addEventListener('click', () => switchTab('browse'));
+    els.repoTabBtn.addEventListener('click', () => switchTab('repo'));
+
+    async function loadRepoList() {
+      try {
+        repoGroups = await window.electronAPI.repoGroups();
+        repoLuts = await window.electronAPI.repoList();
+        renderRepoGroups();
+        renderRepoGrid();
+      } catch (e) {
+        console.error('加载仓库失败:', e);
+      }
+    }
+
+    function renderRepoGroups() {
+      const staticHtml = `<div class="repo-group-item" data-group-id="__all">
+        <span class="repo-group-icon">📁</span> 全部
+        <span class="repo-group-count">${repoLuts.length}</span>
+      </div>
+      <div class="repo-group-item" data-group-id="__none">
+        <span class="repo-group-icon">📄</span> 未分类
+        <span class="repo-group-count">${repoLuts.filter(l => !l.groupId).length}</span>
+      </div>`;
+      const groupHtml = repoGroups.map(g => {
+        const cnt = repoLuts.filter(l => l.groupId === g.id).length;
+        return `<div class="repo-group-item" data-group-id="${g.id}">
+          <span class="repo-group-icon">📁</span> ${escHtml(g.name)}
+          <span class="repo-group-count">${cnt}</span>
+        </div>`;
+      }).join('');
+      els.repoGroupTree.innerHTML = staticHtml + groupHtml;
+      els.repoGroupTree.querySelectorAll('.repo-group-item').forEach(el => {
+        el.addEventListener('click', () => {
+          repoCurrentGroup = el.dataset.groupId;
+          renderRepoGroups();
+          renderRepoGrid();
+        });
+      });
+    }
+
+    function renderRepoGrid() {
+      const filtered = repoCurrentGroup === '__all' ? repoLuts
+        : repoCurrentGroup === '__none' ? repoLuts.filter(l => !l.groupId)
+        : repoLuts.filter(l => l.groupId === repoCurrentGroup);
+
+      if (filtered.length === 0) {
+        els.repoLutGrid.innerHTML = '<div class="empty-state"><p>仓库为空，点击「＋导入」添加 LUT</p></div>';
+        return;
+      }
+
+      els.repoLutGrid.innerHTML = filtered.map(lut => {
+        const stars = '★'.repeat(lut.rating) + '☆'.repeat(5 - lut.rating);
+        const isActive = state.currentLutIndex >= 0 && state.luts[state.currentLutIndex] && state.luts[state.currentLutIndex]._repoId === lut.id;
+        return `<div class="repo-grid-item ${isActive ? 'active' : ''}" data-repo-id="${lut.id}">
+          <div class="repo-grid-thumb"></div>
+          <div class="repo-grid-name">${escHtml(lut.displayName)}</div>
+          ${lut.rating > 0 ? `<div class="repo-grid-rating">${stars}</div>` : ''}
+        </div>`;
+      }).join('');
+
+      els.repoLutGrid.querySelectorAll('.repo-grid-item').forEach(el => {
+        const id = el.dataset.repoId;
+        const lut = filtered.find(l => l.id === id);
+        if (lut) {
+          const thumbDiv = el.querySelector('.repo-grid-thumb');
+          if (state.luts.find(l => l._repoId === lut.id)?.thumb) {
+            thumbDiv.appendChild(state.luts.find(l => l._repoId === lut.id).thumb.cloneNode(true));
+          }
+          el.addEventListener('click', () => applyRepoLut(lut));
+          el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            openEditModal(lut.id);
+          });
+        }
+      });
+    }
+
+    async function applyRepoLut(lut) {
+      const content = await window.electronAPI.repoReadFile(lut.id);
+      if (!content) return;
+      const parsed = LUTParser.parseLUTFromText(lut.fileName, content);
+      parsed._repoId = lut.id;
+      parsed.thumb = generateThumbnail(parsed);
+      const existing = state.luts.findIndex(l => l._repoId === lut.id);
+      if (existing >= 0) {
+        state.currentLutIndex = existing;
+      } else {
+        state.luts.unshift(parsed);
+        state.currentLutIndex = 0;
+      }
+      cacheValid = false;
+      renderLutList();
+      populateLutBSelect();
+      renderRepoGrid();
+      renderPreview();
+      if (activeTab === 'browse') {
+        const el = els.lutList.querySelector(`.lut-item[data-index="${state.currentLutIndex}"]`);
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    const repoAddGroupBtn = document.getElementById('repoAddGroupBtn');
+    repoAddGroupBtn.addEventListener('click', async () => {
+      const name = prompt('新分组名称:');
+      if (name && name.trim()) {
+        await window.electronAPI.repoSaveGroup({ name: name.trim() });
+        await loadRepoList();
+      }
+    });
+
+    els.repoImportBtn.addEventListener('click', async () => {
+      setStatus('正在导入 LUT...');
+      const count = await window.electronAPI.repoImportDialog();
+      if (count > 0) {
+        setStatus(`已导入 ${count} 个 LUT`);
+        await loadRepoList();
+      } else {
+        setStatus('未导入任何 LUT');
+      }
+    });
+
+    /* Edit modal */
+
+    function openEditModal(lutId) {
+      const lut = repoLuts.find(l => l.id === lutId);
+      if (!lut) return;
+      editingLutId = lutId;
+      els.editModalTitle.textContent = `编辑: ${lut.displayName}`;
+      els.editDisplayName.value = lut.displayName || '';
+      els.editNote.value = lut.note || '';
+      els.editGroupId.innerHTML = '<option value="">无</option>' +
+        repoGroups.map(g => `<option value="${g.id}"${lut.groupId === g.id ? ' selected' : ''}>${escHtml(g.name)}</option>`);
+      updateStarUI(lut.rating || 0);
+      els.repoEditModal.style.display = 'flex';
+    }
+
+    function updateStarUI(val) {
+      els.editRating.querySelectorAll('.star').forEach(el => {
+        const v = parseInt(el.dataset.val, 10);
+        el.textContent = v <= val ? '★' : '☆';
+        el.classList.toggle('active', v <= val);
+      });
+    }
+
+    els.editRating.addEventListener('click', (e) => {
+      const star = e.target.closest('.star');
+      if (!star) return;
+      const val = parseInt(star.dataset.val, 10);
+      updateStarUI(val);
+    });
+
+    els.editSaveBtn.addEventListener('click', async () => {
+      if (!editingLutId) return;
+      const rating = els.editRating.querySelectorAll('.star.active').length;
+      const result = await window.electronAPI.repoUpdateLut({
+        id: editingLutId,
+        displayName: els.editDisplayName.value.trim(),
+        groupId: els.editGroupId.value || null,
+        note: els.editNote.value.trim(),
+        rating,
+      });
+      if (result) {
+        const idx = repoLuts.findIndex(l => l.id === editingLutId);
+        if (idx >= 0) Object.assign(repoLuts[idx], result);
+        renderRepoGrid();
+        renderRepoGroups();
+      }
+      els.repoEditModal.style.display = 'none';
+    });
+
+    els.editCancelBtn.addEventListener('click', () => {
+      els.repoEditModal.style.display = 'none';
+    });
+
+    els.editModalClose.addEventListener('click', () => {
+      els.repoEditModal.style.display = 'none';
+    });
+
+    els.editDeleteBtn.addEventListener('click', async () => {
+      if (!editingLutId) return;
+      await window.electronAPI.repoDeleteLut(editingLutId);
+      const inLuts = state.luts.findIndex(l => l._repoId === editingLutId);
+      if (inLuts >= 0) {
+        state.luts.splice(inLuts, 1);
+        if (state.currentLutIndex >= state.luts.length) state.currentLutIndex = state.luts.length - 1;
+        if (state.currentLutIndex === inLuts) state.currentLutIndex = -1;
+        cacheValid = false;
+        renderLutList();
+        populateLutBSelect();
+      }
+      els.repoEditModal.style.display = 'none';
+      await loadRepoList();
+      renderPreview();
+    });
+
+    /* Right-click on group items to manage */
+    els.repoGroupTree.addEventListener('contextmenu', (e) => {
+      const item = e.target.closest('.repo-group-item');
+      if (!item) return;
+      const gid = item.dataset.groupId;
+      if (gid === '__all' || gid === '__none') return;
+      e.preventDefault();
+      const name = prompt('分组名称（留空删除）:', repoGroups.find(g => g.id === gid)?.name || '');
+      if (name === null) return;
+      if (name.trim()) {
+        window.electronAPI.repoSaveGroup({ id: gid, name: name.trim() }).then(() => loadRepoList());
+      } else {
+        if (confirm('确定删除此分组？')) {
+          window.electronAPI.repoDeleteGroup(gid).then(() => loadRepoList());
+        }
+      }
+    });
+
+    loadRepoList();
+  }
+
   /* ── Helpers ── */
 
   function escHtml(s) {
