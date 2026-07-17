@@ -39,24 +39,20 @@
         <div id="repoTab" class="sidebar-tab-content" style="display:none">
           <div class="sidebar-header">
             <div class="sidebar-title-row">
-              <h2>LUT 仓库</h2>
-              <div class="repo-header-actions">
-                <button id="repoAddGroupBtn" class="btn btn-small" title="新建分组">＋分组</button>
-                <button id="repoImportBtn" class="btn btn-small" title="导入 LUT">＋导入</button>
-              </div>
+              <h2 id="repoTitle">LUT 仓库</h2>
+              <button id="repoSelectDirBtn" class="btn btn-small" title="选择仓库文件夹">📂 选择仓库</button>
+            </div>
+            <div id="repoBreadcrumb" class="repo-breadcrumb"></div>
+          </div>
+          <div id="repoContent" class="repo-content">
+            <div class="empty-state" id="repoEmpty">
+              <p>请先选择仓库文件夹</p>
             </div>
           </div>
-          <div class="repo-groups" id="repoGroupTree">
-            <div class="repo-group-item active" data-group-id="__all">
-              <span class="repo-group-icon">📁</span> 全部
-              <span class="repo-group-count" id="repoCountAll">0</span>
-            </div>
-            <div class="repo-group-item" data-group-id="__none">
-              <span class="repo-group-icon">📄</span> 未分类
-              <span class="repo-group-count" id="repoCountNone">0</span>
-            </div>
+          <div class="repo-actions" id="repoActions" style="display:none">
+            <button id="repoImportBtn" class="btn btn-small">＋导入</button>
+            <button id="repoNewFolderBtn" class="btn btn-small">＋新建文件夹</button>
           </div>
-          <div id="repoLutGrid" class="repo-lut-grid"></div>
         </div>
       </aside>
 
@@ -112,18 +108,10 @@
   <div id="repoEditModal" class="modal-overlay" style="display:none">
     <div class="modal">
       <div class="modal-header">
-        <h3 id="editModalTitle">编辑 LUT</h3>
+        <h3 id="editModalTitle">LUT 属性</h3>
         <button id="editModalClose" class="btn-icon">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="form-row">
-          <label>显示名称</label>
-          <input type="text" id="editDisplayName" class="form-input" />
-        </div>
-        <div class="form-row">
-          <label>分组</label>
-          <select id="editGroupId" class="form-input"></select>
-        </div>
         <div class="form-row">
           <label>评分</label>
           <div class="star-rating" id="editRating">
@@ -140,7 +128,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button id="editDeleteBtn" class="btn btn-danger">删除</button>
+        <button id="editDeleteBtn" class="btn btn-danger">删除文件</button>
         <button id="editCancelBtn" class="btn">取消</button>
         <button id="editSaveBtn" class="btn btn-primary">保存</button>
       </div>

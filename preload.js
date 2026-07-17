@@ -13,14 +13,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu-lut-dir-selected', (event, dirPath) => callback(dirPath));
   },
   saveFile: (options) => ipcRenderer.invoke('save-file', options),
-  /* Repo API */
-  repoList: () => ipcRenderer.invoke('repo-list'),
-  repoImportDialog: () => ipcRenderer.invoke('repo-import-dialog'),
-  repoGroups: () => ipcRenderer.invoke('repo-groups'),
-  repoImportFile: (filePath) => ipcRenderer.invoke('repo-import-file', filePath),
-  repoReadFile: (id) => ipcRenderer.invoke('repo-read-file', id),
-  repoUpdateLut: (lutData) => ipcRenderer.invoke('repo-update-lut', lutData),
-  repoDeleteLut: (id) => ipcRenderer.invoke('repo-delete-lut', id),
-  repoSaveGroup: (group) => ipcRenderer.invoke('repo-save-group', group),
-  repoDeleteGroup: (groupId) => ipcRenderer.invoke('repo-delete-group', groupId),
+  /* Repo API (folder-based) */
+  repoSelectDir: () => ipcRenderer.invoke('repo-select-dir'),
+  repoGetDir: () => ipcRenderer.invoke('repo-get-dir'),
+  repoScan: (relativePath) => ipcRenderer.invoke('repo-scan', relativePath),
+  repoReadFile: (relativePath) => ipcRenderer.invoke('repo-read-file', relativePath),
+  repoImportFiles: () => ipcRenderer.invoke('repo-import-files'),
+  repoCreateFolder: (folderName) => ipcRenderer.invoke('repo-create-folder', folderName),
+  repoDelete: (relativePath) => ipcRenderer.invoke('repo-delete', relativePath),
+  repoRename: (oldPath, newName) => ipcRenderer.invoke('repo-rename', { oldPath, newName }),
+  repoMoveFile: (fileRelPath, targetFolderRel) => ipcRenderer.invoke('repo-move-file', { fileRelPath, targetFolderRel }),
+  repoLoadMeta: () => ipcRenderer.invoke('repo-load-meta'),
+  repoSaveMeta: (meta) => ipcRenderer.invoke('repo-save-meta', meta),
 });

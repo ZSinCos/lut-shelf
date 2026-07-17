@@ -795,28 +795,23 @@
     els.statusText.textContent = msg;
   }
 
-  /* ── Repo ── */
-
-  let repoLuts = [];
-  let repoGroups = [];
-  let repoCurrentGroup = '__all';
-  let editingLutId = null;
+  /* ── Repo (folder-based, like Obsidian) ── */
 
   if (isElectron) {
     els.browseTabBtn = document.getElementById('browseTabBtn');
     els.repoTabBtn = document.getElementById('repoTabBtn');
     els.browseTab = document.getElementById('browseTab');
     els.repoTab = document.getElementById('repoTab');
+    els.repoSelectDirBtn = document.getElementById('repoSelectDirBtn');
+    els.repoTitle = document.getElementById('repoTitle');
+    els.repoBreadcrumb = document.getElementById('repoBreadcrumb');
+    els.repoContent = document.getElementById('repoContent');
+    els.repoActions = document.getElementById('repoActions');
     els.repoImportBtn = document.getElementById('repoImportBtn');
-    els.repoGroupTree = document.getElementById('repoGroupTree');
-    els.repoLutGrid = document.getElementById('repoLutGrid');
-    els.repoCountAll = document.getElementById('repoCountAll');
-    els.repoCountNone = document.getElementById('repoCountNone');
+    els.repoNewFolderBtn = document.getElementById('repoNewFolderBtn');
     els.repoEditModal = document.getElementById('repoEditModal');
     els.editModalTitle = document.getElementById('editModalTitle');
     els.editModalClose = document.getElementById('editModalClose');
-    els.editDisplayName = document.getElementById('editDisplayName');
-    els.editGroupId = document.getElementById('editGroupId');
     els.editNote = document.getElementById('editNote');
     els.editDeleteBtn = document.getElementById('editDeleteBtn');
     els.editCancelBtn = document.getElementById('editCancelBtn');
@@ -824,6 +819,8 @@
     els.editRating = document.getElementById('editRating');
 
     let activeTab = 'browse';
+    let repoCurrentPath = '';  // relative path inside repo
+    let repoMeta = {};
 
     function switchTab(tab) {
       activeTab = tab;
@@ -831,93 +828,113 @@
       els.repoTabBtn.classList.toggle('active', tab === 'repo');
       els.browseTab.style.display = tab === 'browse' ? '' : 'none';
       els.repoTab.style.display = tab === 'repo' ? '' : 'none';
-      if (tab === 'repo') loadRepoList();
+      if (tab === 'repo') loadRepoView();
     }
 
     els.browseTabBtn.addEventListener('click', () => switchTab('browse'));
     els.repoTabBtn.addEventListener('click', () => switchTab('repo'));
 
-    async function loadRepoList() {
-      try {
-        repoGroups = await window.electronAPI.repoGroups();
-        repoLuts = await window.electronAPI.repoList();
-        renderRepoGroups();
-        renderRepoGrid();
-      } catch (e) {
-        console.error('加载仓库失败:', e);
+    async function loadRepoView() {
+      const dir = await window.electronAPI.repoGetDir();
+      if (!dir) {
+        els.repoTitle.textContent = 'LUT 仓库（未设置）';
+        els.repoBreadcrumb.innerHTML = '';
+        els.repoContent.innerHTML = '<div class="empty-state"><p>请先点击上方「选择仓库」按钮<br/>选择一个文件夹作为 LUT 仓库</p></div>';
+        els.repoActions.style.display = 'none';
+        return;
       }
+      els.repoActions.style.display = '';
+      els.repoTitle.textContent = `仓库: ${dir.split(/[/\\]/).pop()}`;
+      repoMeta = await window.electronAPI.repoLoadMeta();
+      const result = await window.electronAPI.repoScan(repoCurrentPath);
+      renderBreadcrumb();
+      renderRepoContent(result);
     }
 
-    function renderRepoGroups() {
-      const staticHtml = `<div class="repo-group-item" data-group-id="__all">
-        <span class="repo-group-icon">📁</span> 全部
-        <span class="repo-group-count">${repoLuts.length}</span>
-      </div>
-      <div class="repo-group-item" data-group-id="__none">
-        <span class="repo-group-icon">📄</span> 未分类
-        <span class="repo-group-count">${repoLuts.filter(l => !l.groupId).length}</span>
-      </div>`;
-      const groupHtml = repoGroups.map(g => {
-        const cnt = repoLuts.filter(l => l.groupId === g.id).length;
-        return `<div class="repo-group-item" data-group-id="${g.id}">
-          <span class="repo-group-icon">📁</span> ${escHtml(g.name)}
-          <span class="repo-group-count">${cnt}</span>
-        </div>`;
-      }).join('');
-      els.repoGroupTree.innerHTML = staticHtml + groupHtml;
-      els.repoGroupTree.querySelectorAll('.repo-group-item').forEach(el => {
+    function renderBreadcrumb() {
+      const parts = repoCurrentPath ? repoCurrentPath.split(/[/\\]/) : [];
+      let html = '<span data-path="">仓库根目录</span>';
+      let acc = '';
+      parts.forEach((p, i) => {
+        acc = acc ? `${acc}/${p}` : p;
+        html += `<span class="sep">›</span><span data-path="${acc}">${escHtml(p)}</span>`;
+      });
+      els.repoBreadcrumb.innerHTML = html;
+      els.repoBreadcrumb.querySelectorAll('span[data-path]').forEach(el => {
         el.addEventListener('click', () => {
-          repoCurrentGroup = el.dataset.groupId;
-          renderRepoGroups();
-          renderRepoGrid();
+          repoCurrentPath = el.dataset.path;
+          loadRepoView();
         });
       });
     }
 
-    function renderRepoGrid() {
-      const filtered = repoCurrentGroup === '__all' ? repoLuts
-        : repoCurrentGroup === '__none' ? repoLuts.filter(l => !l.groupId)
-        : repoLuts.filter(l => l.groupId === repoCurrentGroup);
-
-      if (filtered.length === 0) {
-        els.repoLutGrid.innerHTML = '<div class="empty-state"><p>仓库为空，点击「＋导入」添加 LUT</p></div>';
+    function renderRepoContent(result) {
+      if (result.folders.length === 0 && result.files.length === 0) {
+        els.repoContent.innerHTML = '<div class="empty-state"><p>此文件夹为空<br/>点击「＋导入」添加 LUT</p></div>';
         return;
       }
-
-      els.repoLutGrid.innerHTML = filtered.map(lut => {
-        const stars = '★'.repeat(lut.rating) + '☆'.repeat(5 - lut.rating);
-        const isActive = state.currentLutIndex >= 0 && state.luts[state.currentLutIndex] && state.luts[state.currentLutIndex]._repoId === lut.id;
-        return `<div class="repo-grid-item ${isActive ? 'active' : ''}" data-repo-id="${lut.id}">
-          <div class="repo-grid-thumb"></div>
-          <div class="repo-grid-name">${escHtml(lut.displayName)}</div>
-          ${lut.rating > 0 ? `<div class="repo-grid-rating">${stars}</div>` : ''}
+      let html = '';
+      result.folders.forEach(f => {
+        html += `<div class="repo-item repo-item-folder" data-type="folder" data-path="${f.relativePath}">
+          <div class="repo-item-icon">📁</div>
+          <div class="repo-item-name">${escHtml(f.name)}</div>
         </div>`;
-      }).join('');
+      });
+      result.files.forEach(f => {
+        const meta = repoMeta[f.relativePath] || {};
+        const stars = meta.rating ? '★'.repeat(meta.rating) + '☆'.repeat(5 - meta.rating) : '';
+        const isActive = state.luts.some(l => l._repoRelPath === f.relativePath);
+        html += `<div class="repo-item ${isActive ? 'active' : ''}" data-type="file" data-path="${f.relativePath}">
+          <div class="repo-item-thumb"></div>
+          <div class="repo-item-name">${escHtml(f.name.replace(/\.[^.]+$/, ''))}</div>
+          ${meta.rating ? `<div class="repo-item-rating">${stars}</div>` : ''}
+        </div>`;
+      });
+      els.repoContent.innerHTML = html;
 
-      els.repoLutGrid.querySelectorAll('.repo-grid-item').forEach(el => {
-        const id = el.dataset.repoId;
-        const lut = filtered.find(l => l.id === id);
-        if (lut) {
-          const thumbDiv = el.querySelector('.repo-grid-thumb');
-          if (state.luts.find(l => l._repoId === lut.id)?.thumb) {
-            thumbDiv.appendChild(state.luts.find(l => l._repoId === lut.id).thumb.cloneNode(true));
+      els.repoContent.querySelectorAll('[data-type="folder"]').forEach(el => {
+        el.addEventListener('click', () => {
+          repoCurrentPath = el.dataset.path;
+          loadRepoView();
+        });
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          const act = prompt('操作: 输入新名称重命名，留空删除文件夹');
+          if (act === null) return;
+          if (act.trim()) {
+            window.electronAPI.repoRename(el.dataset.path, act.trim()).then(() => loadRepoView());
+          } else {
+            if (confirm('确定删除此文件夹及其中所有文件？')) {
+              window.electronAPI.repoDelete(el.dataset.path).then(() => loadRepoView());
+            }
           }
-          el.addEventListener('click', () => applyRepoLut(lut));
-          el.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            openEditModal(lut.id);
-          });
+        });
+      });
+
+      els.repoContent.querySelectorAll('[data-type="file"]').forEach(el => {
+        const path = el.dataset.path;
+        const meta = repoMeta[path] || {};
+        const thumbDiv = el.querySelector('.repo-item-thumb');
+        const cached = state.luts.find(l => l._repoRelPath === path);
+        if (cached?.thumb) {
+          thumbDiv.appendChild(cached.thumb.cloneNode(true));
         }
+        el.addEventListener('click', () => applyRepoFile(path));
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          openFileMenu(path);
+        });
       });
     }
 
-    async function applyRepoLut(lut) {
-      const content = await window.electronAPI.repoReadFile(lut.id);
+    async function applyRepoFile(relPath) {
+      const content = await window.electronAPI.repoReadFile(relPath);
       if (!content) return;
-      const parsed = LUTParser.parseLUTFromText(lut.fileName, content);
-      parsed._repoId = lut.id;
+      const name = relPath.split(/[/\\]/).pop();
+      const parsed = LUTParser.parseLUTFromText(name, content);
+      parsed._repoRelPath = relPath;
       parsed.thumb = generateThumbnail(parsed);
-      const existing = state.luts.findIndex(l => l._repoId === lut.id);
+      const existing = state.luts.findIndex(l => l._repoRelPath === relPath);
       if (existing >= 0) {
         state.currentLutIndex = existing;
       } else {
@@ -927,47 +944,48 @@
       cacheValid = false;
       renderLutList();
       populateLutBSelect();
-      renderRepoGrid();
       renderPreview();
-      if (activeTab === 'browse') {
-        const el = els.lutList.querySelector(`.lut-item[data-index="${state.currentLutIndex}"]`);
-        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
+      loadRepoView();
     }
 
-    const repoAddGroupBtn = document.getElementById('repoAddGroupBtn');
-    repoAddGroupBtn.addEventListener('click', async () => {
-      const name = prompt('新分组名称:');
-      if (name && name.trim()) {
-        await window.electronAPI.repoSaveGroup({ name: name.trim() });
-        await loadRepoList();
-      }
-    });
-
-    els.repoImportBtn.addEventListener('click', async () => {
-      setStatus('正在导入 LUT...');
-      const count = await window.electronAPI.repoImportDialog();
-      if (count > 0) {
-        setStatus(`已导入 ${count} 个 LUT`);
-        await loadRepoList();
-      } else {
-        setStatus('未导入任何 LUT');
-      }
-    });
-
-    /* Edit modal */
-
-    function openEditModal(lutId) {
-      const lut = repoLuts.find(l => l.id === lutId);
-      if (!lut) return;
-      editingLutId = lutId;
-      els.editModalTitle.textContent = `编辑: ${lut.displayName}`;
-      els.editDisplayName.value = lut.displayName || '';
-      els.editNote.value = lut.note || '';
-      els.editGroupId.innerHTML = '<option value="">无</option>' +
-        repoGroups.map(g => `<option value="${g.id}"${lut.groupId === g.id ? ' selected' : ''}>${escHtml(g.name)}</option>`);
-      updateStarUI(lut.rating || 0);
+    function openFileMenu(relPath) {
+      const meta = repoMeta[relPath] || {};
+      els.editModalTitle.textContent = `属性: ${relPath.split(/[/\\]/).pop()}`;
+      els.editNote.value = meta.note || '';
+      updateStarUI(meta.rating || 0);
       els.repoEditModal.style.display = 'flex';
+
+      const saveHandler = async () => {
+        const rating = els.editRating.querySelectorAll('.star.active').length;
+        repoMeta[relPath] = {
+          rating,
+          note: els.editNote.value.trim(),
+        };
+        await window.electronAPI.repoSaveMeta(repoMeta);
+        els.repoEditModal.style.display = 'none';
+        loadRepoView();
+      };
+
+      const deleteHandler = async () => {
+        if (confirm(`确定删除 ${relPath}？`)) {
+          await window.electronAPI.repoDelete(relPath);
+          const idx = state.luts.findIndex(l => l._repoRelPath === relPath);
+          if (idx >= 0) {
+            state.luts.splice(idx, 1);
+            if (state.currentLutIndex >= state.luts.length) state.currentLutIndex = state.luts.length - 1;
+            if (state.currentLutIndex === idx) state.currentLutIndex = -1;
+            cacheValid = false;
+            renderLutList();
+            populateLutBSelect();
+            renderPreview();
+          }
+          els.repoEditModal.style.display = 'none';
+          loadRepoView();
+        }
+      };
+
+      els.editSaveBtn.onclick = saveHandler;
+      els.editDeleteBtn.onclick = deleteHandler;
     }
 
     function updateStarUI(val) {
@@ -985,69 +1003,42 @@
       updateStarUI(val);
     });
 
-    els.editSaveBtn.addEventListener('click', async () => {
-      if (!editingLutId) return;
-      const rating = els.editRating.querySelectorAll('.star.active').length;
-      const result = await window.electronAPI.repoUpdateLut({
-        id: editingLutId,
-        displayName: els.editDisplayName.value.trim(),
-        groupId: els.editGroupId.value || null,
-        note: els.editNote.value.trim(),
-        rating,
-      });
-      if (result) {
-        const idx = repoLuts.findIndex(l => l.id === editingLutId);
-        if (idx >= 0) Object.assign(repoLuts[idx], result);
-        renderRepoGrid();
-        renderRepoGroups();
-      }
-      els.repoEditModal.style.display = 'none';
-    });
-
     els.editCancelBtn.addEventListener('click', () => {
       els.repoEditModal.style.display = 'none';
     });
-
     els.editModalClose.addEventListener('click', () => {
       els.repoEditModal.style.display = 'none';
     });
 
-    els.editDeleteBtn.addEventListener('click', async () => {
-      if (!editingLutId) return;
-      await window.electronAPI.repoDeleteLut(editingLutId);
-      const inLuts = state.luts.findIndex(l => l._repoId === editingLutId);
-      if (inLuts >= 0) {
-        state.luts.splice(inLuts, 1);
-        if (state.currentLutIndex >= state.luts.length) state.currentLutIndex = state.luts.length - 1;
-        if (state.currentLutIndex === inLuts) state.currentLutIndex = -1;
-        cacheValid = false;
-        renderLutList();
-        populateLutBSelect();
+    els.repoSelectDirBtn.addEventListener('click', async () => {
+      const dir = await window.electronAPI.repoSelectDir();
+      if (dir) {
+        repoCurrentPath = '';
+        loadRepoView();
       }
-      els.repoEditModal.style.display = 'none';
-      await loadRepoList();
-      renderPreview();
     });
 
-    /* Right-click on group items to manage */
-    els.repoGroupTree.addEventListener('contextmenu', (e) => {
-      const item = e.target.closest('.repo-group-item');
-      if (!item) return;
-      const gid = item.dataset.groupId;
-      if (gid === '__all' || gid === '__none') return;
-      e.preventDefault();
-      const name = prompt('分组名称（留空删除）:', repoGroups.find(g => g.id === gid)?.name || '');
-      if (name === null) return;
-      if (name.trim()) {
-        window.electronAPI.repoSaveGroup({ id: gid, name: name.trim() }).then(() => loadRepoList());
+    els.repoImportBtn.addEventListener('click', async () => {
+      const count = await window.electronAPI.repoImportFiles();
+      if (count > 0) {
+        setStatus(`已导入 ${count} 个 LUT`);
+        loadRepoView();
       } else {
-        if (confirm('确定删除此分组？')) {
-          window.electronAPI.repoDeleteGroup(gid).then(() => loadRepoList());
-        }
+        setStatus('未导入任何 LUT');
       }
     });
 
-    loadRepoList();
+    els.repoNewFolderBtn.addEventListener('click', async () => {
+      const name = prompt('文件夹名称:');
+      if (name && name.trim()) {
+        const target = repoCurrentPath ? `${repoCurrentPath}/${name.trim()}` : name.trim();
+        const ok = await window.electronAPI.repoCreateFolder(target);
+        if (ok) loadRepoView();
+      }
+    });
+
+    // Initial load if repo dir already set
+    loadRepoView();
   }
 
   /* ── Helpers ── */
