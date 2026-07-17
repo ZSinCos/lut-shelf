@@ -715,11 +715,14 @@
     for (const file of files) {
       try {
         const lut = await LUTParser.parseLUT(file);
-        lut.thumb = generateThumbnailSync(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${file.name}`, err);
       }
+    }
+    // batch generate thumbnails
+    for (const lut of state.luts) {
+      lut.thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
     }
 
     state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
@@ -739,11 +742,13 @@
         const text = await window.electronAPI.readLutFile(entry.path);
         if (!text) continue;
         const lut = LUTParser.parseLUTFromText(entry.name, text);
-        lut.thumb = generateThumbnailSync(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${entry.name}`, err);
       }
+    }
+    for (const lut of state.luts) {
+      lut.thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
     }
 
     state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
