@@ -1086,8 +1086,13 @@
       parsed._repoRelPath = relPath;
       const thumb = await generateThumbnail(parsed).catch(() => generateThumbnailSync(parsed));
       parsed.thumb = thumb;
-      const existing = state.luts.findIndex(l => l._repoRelPath === relPath);
+      let existing = state.luts.findIndex(l => l._repoRelPath === relPath);
+      if (existing < 0) {
+        existing = state.luts.findIndex(l => l.name === parsed.name && !l._repoRelPath);
+      }
       if (existing >= 0) {
+        state.luts[existing]._repoRelPath = relPath;
+        state.luts[existing].thumb = thumb;
         state.currentLutIndex = existing;
       } else {
         state.luts.unshift(parsed);
