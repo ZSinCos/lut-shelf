@@ -165,8 +165,18 @@
     return c;
   }
 
-  // Initialize thumb source on load
-  initThumbSource();
+  // Initialize thumb source on load (extract RW2 preview on first run)
+  (async () => {
+    if (isElectron) {
+      const existing = await window.electronAPI.thumbGetSource();
+      if (!existing) {
+        const rw2Path = 'C:\\Users\\SinCos\\Desktop\\P1011709.RW2';
+        const result = await window.electronAPI.thumbSetSource(rw2Path);
+        if (result) console.log('[Thumb] 缩略图源已从 RW2 提取');
+      }
+    }
+    await initThumbSource();
+  })();
 
   /* ── Events ── */
 
@@ -1111,18 +1121,6 @@
         if (ok) loadRepoView();
       }
     });
-
-    // One-time thumb source setup from user's RW2 file
-    (async () => {
-      const existing = await window.electronAPI.thumbGetSource();
-      if (!existing) {
-        const rw2Path = 'C:\\Users\\SinCos\\Desktop\\P1011709.RW2';
-        const result = await window.electronAPI.thumbSetSource(rw2Path);
-        if (result) {
-          await initThumbSource();
-        }
-      }
-    })();
 
     els.repoSetThumbBtn.addEventListener('click', async () => {
       const input = document.createElement('input');
