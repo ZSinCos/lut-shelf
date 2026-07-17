@@ -4,6 +4,8 @@
     currentLutIndex: -1,
     sourceImage: null,
     compareMode: false,
+    splitRatio: 0.5,
+    dragging: false,
     sortFav: false,
     favorites: JSON.parse(localStorage.getItem('lutFavorites') || '[]'),
   };
@@ -178,6 +180,43 @@
     }
   });
 
+  /* ── Split line drag ── */
+
+  els.canvas.addEventListener('mousedown', (e) => {
+    if (!state.compareMode) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const scaleX = els.canvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const splitX = els.canvas.width * state.splitRatio;
+    if (Math.abs(mx - splitX) < 8) {
+      state.dragging = true;
+      els.canvas.style.cursor = 'ew-resize';
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!state.dragging) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const scaleX = els.canvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    state.splitRatio = Math.max(0.05, Math.min(0.95, mx / els.canvas.width));
+    renderPreview();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (state.dragging) {
+      state.dragging = false;
+      els.canvas.style.cursor = '';
+    }
+  });
+
+  els.canvas.addEventListener('mouseleave', () => {
+    if (state.dragging) {
+      state.dragging = false;
+      els.canvas.style.cursor = '';
+    }
+  });
+
   /* ── Image loading ── */
 
   async function loadImageFile(file) {
@@ -274,7 +313,7 @@
         webgl.resize(w, h);
         webgl.uploadImage(state.sourceImage);
         webgl.uploadLUT(lut);
-        webglOk = webgl.render(w, h, state.compareMode);
+        webglOk = webgl.render(w, h, state.compareMode, state.splitRatio);
         if (webglOk) {
           ctx.clearRect(0, 0, w, h);
           ctx.drawImage(webglCanvas, 0, 0);
@@ -288,7 +327,7 @@
         if (lut) {
           const imageData = ctx.getImageData(0, 0, w, h);
           if (state.compareMode) {
-            LUTApply.applyLUTWithSplit(imageData, lut, 0.5);
+            LUTApply.applyLUTWithSplit(imageData, lut, state.splitRatio);
           } else {
             LUTApply.applyLUT(imageData, lut);
           }
@@ -297,7 +336,7 @@
       }
 
       if (state.compareMode) {
-        const splitX = w / 2;
+        const splitX = Math.round(w * state.splitRatio);
         ctx.save();
         ctx.strokeStyle = '#e94560';
         ctx.lineWidth = 2;
@@ -306,11 +345,16 @@
         ctx.moveTo(splitX, 0);
         ctx.lineTo(splitX, h);
         ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#e94560';
+        ctx.beginPath();
+        ctx.arc(splitX, h / 2, 6, 0, Math.PI * 2);
+        ctx.fill();
         ctx.fillStyle = 'rgba(233,69,96,0.85)';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('LUT', splitX / 2, 18);
-        ctx.fillText('原始', splitX + splitX / 2, 18);
+        ctx.fillText('LUT', Math.round(splitX / 2), 18);
+        ctx.fillText('原始', Math.round(splitX + (w - splitX) / 2), 18);
         ctx.restore();
       }
     } catch (err) {

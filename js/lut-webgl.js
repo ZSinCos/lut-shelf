@@ -181,7 +181,7 @@ class LUTWebGL {
     this.currentLutType = lut.type;
   }
 
-  render(width, height, compareMode) {
+  render(width, height, compareMode, splitRatio) {
     const gl = this.gl;
     if (!gl || !this.program || !this.texImage) return false;
 
@@ -203,7 +203,7 @@ class LUTWebGL {
     }
 
     gl.uniform1f(this.locCompare, compareMode ? 1.0 : 0.0);
-    gl.uniform1f(this.locSplitX, width / 2);
+    gl.uniform1f(this.locSplitX, Math.round(width * (splitRatio || 0.5)));
     gl.uniform1f(this.locIsVLT, this.currentLutType === 'vlt' ? 1.0 : 0.0);
 
     gl.bindVertexArray(this.vao);
