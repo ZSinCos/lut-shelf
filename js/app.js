@@ -13,6 +13,8 @@
     dragging: false,
     sortFav: false,
     favorites: JSON.parse(localStorage.getItem('lutFavorites') || '[]'),
+    repoThumbSize: 90,
+    repoOrder: null,
   };
 
   const els = {
@@ -978,6 +980,8 @@
     els.repoActions = document.getElementById('repoActions');
     els.repoImportBtn = document.getElementById('repoImportBtn');
     els.repoNewFolderBtn = document.getElementById('repoNewFolderBtn');
+    els.repoThumbSizeSlider = document.getElementById('repoThumbSizeSlider');
+    els.repoThumbSizeLabel = document.getElementById('repoThumbSizeLabel');
     els.repoSetThumbBtn = document.getElementById('repoSetThumbBtn');
     els.repoEditModal = document.getElementById('repoEditModal');
     els.editModalTitle = document.getElementById('editModalTitle');
@@ -1015,8 +1019,16 @@
       }
       els.repoActions.style.display = '';
       els.repoTitle.textContent = `仓库: ${dir.split(/[/\\]/).pop()}`;
+      els.repoContent.style.setProperty('--repo-thumb-size', state.repoThumbSize + 'px');
+      els.repoThumbSizeSlider.value = state.repoThumbSize;
+      els.repoThumbSizeLabel.textContent = state.repoThumbSize;
       repoMeta = await window.electronAPI.repoLoadMeta();
       const result = await window.electronAPI.repoScan(repoCurrentPath);
+      try {
+        state.repoOrder = await window.electronAPI.repoLoadOrder();
+      } catch (e) {
+        state.repoOrder = null;
+      }
       renderBreadcrumb();
       renderRepoContent(result);
     }
@@ -1045,16 +1057,29 @@
       }
       let html = '';
       result.folders.forEach(f => {
-        html += `<div class="repo-item repo-item-folder" data-type="folder" data-path="${f.relativePath}">
+        html += `<div class="repo-item repo-item-folder" draggable="false" data-type="folder" data-path="${f.relativePath}">
           <div class="repo-item-icon">📁</div>
           <div class="repo-item-name">${escHtml(f.name)}</div>
         </div>`;
       });
-      result.files.forEach(f => {
+      // apply custom order if available
+      let sortedFiles = [...result.files];
+      if (state.repoOrder && Array.isArray(state.repoOrder)) {
+        const orderMap = new Map(state.repoOrder.map((p, i) => [p, i]));
+        sortedFiles.sort((a, b) => {
+          const ai = orderMap.get(a.relativePath);
+          const bi = orderMap.get(b.relativePath);
+          if (ai !== undefined && bi !== undefined) return ai - bi;
+          if (ai !== undefined) return -1;
+          if (bi !== undefined) return 1;
+          return a.name.localeCompare(b.name, 'zh-CN-u-kf-upper');
+        });
+      }
+      sortedFiles.forEach(f => {
         const meta = repoMeta[f.relativePath] || {};
         const stars = meta.rating ? '★'.repeat(meta.rating) + '☆'.repeat(5 - meta.rating) : '';
         const isActive = state.luts.some(l => l._repoRelPath === f.relativePath);
-        html += `<div class="repo-item ${isActive ? 'active' : ''}" data-type="file" data-path="${f.relativePath}">
+        html += `<div class="repo-item ${isActive ? 'active' : ''}" draggable="true" data-type="file" data-path="${f.relativePath}">
           <div class="repo-item-thumb"></div>
           <div class="repo-item-name">${escHtml(f.name.replace(/\.[^.]+$/, ''))}</div>
           ${meta.rating ? `<div class="repo-item-rating">${stars}</div>` : ''}
@@ -1112,6 +1137,43 @@
         el.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           openFileMenu(path);
+        });
+        // drag & drop reorder
+        el.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', el.dataset.path);
+          el.classList.add('dragging');
+        });
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dragging');
+          els.repoContent.querySelectorAll('.repo-item').forEach(i => i.classList.remove('drag-target'));
+        });
+        el.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          els.repoContent.querySelectorAll('.repo-item').forEach(i => i.classList.remove('drag-target'));
+          el.classList.add('drag-target');
+        });
+        el.addEventListener('dragleave', () => {
+          el.classList.remove('drag-target');
+        });
+        el.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          els.repoContent.querySelectorAll('.repo-item').forEach(i => i.classList.remove('drag-target', 'dragging'));
+          const fromPath = e.dataTransfer.getData('text/plain');
+          const toPath = el.dataset.path;
+          if (!fromPath || fromPath === toPath) return;
+          const items = els.repoContent.querySelectorAll('[data-type="file"]');
+          const order = Array.from(items).map(i => i.dataset.path);
+          const fromIdx = order.indexOf(fromPath);
+          const toIdx = order.indexOf(toPath);
+          if (fromIdx < 0 || toIdx < 0) return;
+          order.splice(fromIdx, 1);
+          order.splice(toIdx, 0, fromPath);
+          state.repoOrder = order;
+          window.electronAPI.repoSaveOrder(order);
+          // re-render to reflect new order
+          loadRepoView();
         });
       });
     }
@@ -1230,6 +1292,12 @@
         const ok = await window.electronAPI.repoCreateFolder(target);
         if (ok) loadRepoView();
       }
+    });
+
+    els.repoThumbSizeSlider.addEventListener('input', () => {
+      state.repoThumbSize = parseInt(els.repoThumbSizeSlider.value, 10);
+      els.repoThumbSizeLabel.textContent = state.repoThumbSize;
+      els.repoContent.style.setProperty('--repo-thumb-size', state.repoThumbSize + 'px');
     });
 
     els.repoSetThumbBtn.addEventListener('click', async () => {

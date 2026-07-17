@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   repoMoveFile: (fileRelPath, targetFolderRel) => ipcRenderer.invoke('repo-move-file', { fileRelPath, targetFolderRel }),
   repoLoadMeta: () => ipcRenderer.invoke('repo-load-meta'),
   repoSaveMeta: (meta) => ipcRenderer.invoke('repo-save-meta', meta),
+  repoLoadOrder: () => ipcRenderer.invoke('repo-load-order'),
+  repoSaveOrder: (order) => ipcRenderer.invoke('repo-save-order', order),
   /* Thumbnail API */
   thumbSetSource: (filePath) => ipcRenderer.invoke('thumb-set-source', filePath),
   thumbGetSource: () => ipcRenderer.invoke('thumb-get-source'),

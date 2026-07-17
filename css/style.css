@@ -276,9 +276,13 @@ header h1 {
   overflow-y: auto;
   padding: 6px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--repo-thumb-size, 90px), 1fr));
   gap: 6px;
   align-content: start;
+}
+.repo-content.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 .repo-content::-webkit-scrollbar {
   width: 6px;
@@ -297,8 +301,15 @@ header h1 {
   padding: 4px;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, opacity 0.15s;
   position: relative;
+}
+.repo-item.dragging {
+  opacity: 0.4;
+}
+.repo-item.drag-target {
+  border-color: var(--accent);
+  border-style: dashed;
 }
 .repo-item:hover {
   border-color: var(--accent);
@@ -351,6 +362,44 @@ header h1 {
   padding: 6px 10px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  align-items: center;
+}
+.repo-thumb-size-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.repo-thumb-slider {
+  width: 60px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+.repo-thumb-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.repo-thumb-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+}
+.repo-thumb-size-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 22px;
+  text-align: right;
 }
 
 /* ── Modal ── */

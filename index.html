@@ -52,7 +52,11 @@
           <div class="repo-actions" id="repoActions" style="display:none">
             <button id="repoImportBtn" class="btn btn-small">＋导入</button>
             <button id="repoNewFolderBtn" class="btn btn-small">＋新建文件夹</button>
-            <button id="repoSetThumbBtn" class="btn btn-small" style="margin-left:auto">📷 缩略图源</button>
+            <div class="repo-thumb-size-group">
+              <input type="range" id="repoThumbSizeSlider" min="60" max="200" value="90" class="repo-thumb-slider" />
+              <span id="repoThumbSizeLabel" class="repo-thumb-size-label">90</span>
+            </div>
+            <button id="repoSetThumbBtn" class="btn btn-small">📷 缩略图源</button>
           </div>
         </div>
       </aside>

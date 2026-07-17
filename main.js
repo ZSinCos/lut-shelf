@@ -468,6 +468,29 @@ ipcMain.handle('repo-save-meta', async (event, meta) => {
   saveMeta(repoDir, meta);
 });
 
+ipcMain.handle('repo-load-order', async () => {
+  const repoDir = getRepoPath();
+  if (!repoDir) return [];
+  const orderPath = path.join(repoDir, '.reporder.json');
+  try {
+    if (!fs.existsSync(orderPath)) return [];
+    return JSON.parse(fs.readFileSync(orderPath, 'utf8'));
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('repo-save-order', async (event, order) => {
+  const repoDir = getRepoPath();
+  if (!repoDir) return;
+  const orderPath = path.join(repoDir, '.reporder.json');
+  try {
+    fs.writeFileSync(orderPath, JSON.stringify(order, null, 2));
+  } catch (e) {
+    console.error('保存顺序失败:', e);
+  }
+});
+
 /* ── Thumbnail system ── */
 
 const THUMB_DIR = path.join(app.getPath('userData'), 'thumbs');
