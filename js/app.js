@@ -139,14 +139,12 @@
     const cx = c.getContext('2d');
 
     if (thumbSourceImg) {
-      // draw source image covering the canvas
       const s = thumbSourceImg;
       const scale = Math.max(THUMB_SIZE / s.width, THUMB_SIZE / s.height);
       const sw = s.width * scale, sh = s.height * scale;
       const sx = (sw - THUMB_SIZE) / 2, sy = (sh - THUMB_SIZE) / 2;
       cx.drawImage(s, 0, 0, s.width, s.height, -sx, -sy, sw, sh);
     } else {
-      // fallback gradient
       for (let y = 0; y < THUMB_SIZE; y++) {
         for (let x = 0; x < THUMB_SIZE; x++) {
           cx.fillStyle = `rgb(${x/THUMB_SIZE*255|0},${y/THUMB_SIZE*255|0},${128+64*Math.sin((x+y)/THUMB_SIZE*Math.PI)|0})`;
@@ -159,17 +157,45 @@
     LUTApply.applyLUT(imgData, lut);
     cx.putImageData(imgData, 0, 0);
 
-    // save to disk cache
     if (isElectron) {
-      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/png'));
-      const reader = new FileReader();
-      reader.onload = () => {
-        const b64 = reader.result.split(',')[1];
-        window.electronAPI.thumbCachePut(thumbCacheKey(lut), b64);
-      };
-      reader.readAsDataURL(blob);
+      try {
+        const blob = await new Promise(resolve => c.toBlob(resolve, 'image/png'));
+        const reader = new FileReader();
+        reader.onload = () => {
+          const b64 = reader.result.split(',')[1];
+          window.electronAPI.thumbCachePut(thumbCacheKey(lut), b64);
+        };
+        reader.readAsDataURL(blob);
+      } catch (e) {
+        console.warn('[Thumb] 缓存保存失败:', e.message);
+      }
     }
 
+    return c;
+  }
+
+  /* Sync fallback for non-cached / non-electron */
+  function generateThumbnailSync(lut) {
+    const size = 16;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const cx = c.getContext('2d');
+    const imgData = cx.createImageData(size, size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        const r = x / (size - 1);
+        const g = y / (size - 1);
+        const b = 0.5 + 0.5 * Math.sin((x + y) / size * Math.PI);
+        const [or, og, ob] = LUTParser.sampleLUT(lut, r, g, b);
+        imgData.data[i]     = Math.round(or * 255);
+        imgData.data[i + 1] = Math.round(og * 255);
+        imgData.data[i + 2] = Math.round(ob * 255);
+        imgData.data[i + 3] = 255;
+      }
+    }
+    cx.putImageData(imgData, 0, 0);
     return c;
   }
 
@@ -685,7 +711,7 @@
     for (const file of files) {
       try {
         const lut = await LUTParser.parseLUT(file);
-        lut.thumb = await generateThumbnail(lut);
+        lut.thumb = generateThumbnailSync(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${file.name}`, err);
@@ -709,7 +735,7 @@
         const text = await window.electronAPI.readLutFile(entry.path);
         if (!text) continue;
         const lut = LUTParser.parseLUTFromText(entry.name, text);
-        lut.thumb = await generateThumbnail(lut);
+        lut.thumb = generateThumbnailSync(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${entry.name}`, err);
@@ -1026,7 +1052,8 @@
       const name = relPath.split(/[/\\]/).pop();
       const parsed = LUTParser.parseLUTFromText(name, content);
       parsed._repoRelPath = relPath;
-      parsed.thumb = await generateThumbnail(parsed);
+      const thumb = await generateThumbnail(parsed).catch(() => generateThumbnailSync(parsed));
+      parsed.thumb = thumb;
       const existing = state.luts.findIndex(l => l._repoRelPath === relPath);
       if (existing >= 0) {
         state.currentLutIndex = existing;
