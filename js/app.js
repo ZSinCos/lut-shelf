@@ -1049,7 +1049,11 @@
         const thumbDiv = el.querySelector('.repo-item-thumb');
         const cached = state.luts.find(l => l._repoRelPath === path);
         if (cached?.thumb) {
-          thumbDiv.appendChild(cached.thumb.cloneNode(true));
+          const img = document.createElement('img');
+          img.src = cached.thumb.toDataURL();
+          img.style.width = '100%';
+          img.style.height = '100%';
+          thumbDiv.appendChild(img);
         } else if (isElectron) {
           // lazy generate thumbnail
           const content = await window.electronAPI.repoReadFile(path);
@@ -1057,7 +1061,13 @@
             const name = path.split(/[/\\]/).pop();
             const lut = LUTParser.parseLUTFromText(name, content);
             const thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
-            if (thumbDiv) thumbDiv.appendChild(thumb.cloneNode(true));
+            if (thumbDiv) {
+              const img = document.createElement('img');
+              img.src = thumb.toDataURL();
+              img.style.width = '100%';
+              img.style.height = '100%';
+              thumbDiv.appendChild(img);
+            }
           }
         }
         el.addEventListener('click', () => applyRepoFile(path));
