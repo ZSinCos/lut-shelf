@@ -1030,13 +1030,22 @@
         });
       });
 
-      els.repoContent.querySelectorAll('[data-type="file"]').forEach(el => {
+      els.repoContent.querySelectorAll('[data-type="file"]').forEach(async (el) => {
         const path = el.dataset.path;
         const meta = repoMeta[path] || {};
         const thumbDiv = el.querySelector('.repo-item-thumb');
         const cached = state.luts.find(l => l._repoRelPath === path);
         if (cached?.thumb) {
           thumbDiv.appendChild(cached.thumb.cloneNode(true));
+        } else if (isElectron) {
+          // lazy generate thumbnail
+          const content = await window.electronAPI.repoReadFile(path);
+          if (content) {
+            const name = path.split(/[/\\]/).pop();
+            const lut = LUTParser.parseLUTFromText(name, content);
+            const thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
+            if (thumbDiv) thumbDiv.appendChild(thumb.cloneNode(true));
+          }
         }
         el.addEventListener('click', () => applyRepoFile(path));
         el.addEventListener('contextmenu', (e) => {
