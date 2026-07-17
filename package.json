@@ -22,5 +22,8 @@
     "win": {
       "target": "portable"
     }
+  },
+  "dependencies": {
+    "exifr": "^7.1.3"
   }
 }

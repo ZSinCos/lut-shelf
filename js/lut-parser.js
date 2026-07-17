@@ -13,6 +13,18 @@ class LUTParser {
     }
   }
 
+  static parseLUTFromText(fileName, text) {
+    const ext = fileName.split('.').pop().toLowerCase();
+    switch (ext) {
+      case 'cube':
+        return LUTParser.parseCube(text, fileName);
+      case 'vlt':
+        return LUTParser.parseVLT(text, fileName);
+      default:
+        throw new Error(`不支持的 LUT 格式: .${ext}`);
+    }
+  }
+
   static parseCube(text, name) {
     const lines = text.split(/\r?\n/);
     let size = 33;

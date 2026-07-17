@@ -73,11 +73,15 @@
 
   els.lutSearch.addEventListener('input', renderLutList);
 
+  function isRawFile(ext) {
+    return RAW_EXTS.includes(ext.toLowerCase());
+  }
+
   els.imageInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      await loadImage(file);
+      await loadImageFile(file);
     } catch (err) {
       console.error('[App] 图片加载失败:', err);
       setStatus('图片加载失败');
@@ -96,8 +100,8 @@
   els.container.addEventListener('drop', async (e) => {
     e.preventDefault();
     els.container.style.outline = '';
-    const imgFile = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
-    if (imgFile) await loadImage(imgFile);
+    const file = Array.from(e.dataTransfer.files)[0];
+    if (file) await loadImageFile(file);
   });
 
   els.toggleCompareBtn.addEventListener('click', () => {
@@ -111,24 +115,41 @@
     renderPreview();
   });
 
-  els.loadLutDirBtn.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.webkitdirectory = true;
-    input.accept = '.vlt,.cube';
-    input.addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files).filter(f => {
-        const ext = f.name.split('.').pop().toLowerCase();
-        return ext === 'vlt' || ext === 'cube';
-      });
-      if (files.length === 0) {
-        setStatus('未找到 LUT 文件');
+  const isElectron = !!window.electronAPI;
+  const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
+
+  els.loadLutDirBtn.addEventListener('click', async () => {
+    if (isElectron) {
+      const dirPath = await window.electronAPI.selectLutDir();
+      if (!dirPath) return;
+      setStatus('正在扫描 LUT 文件...');
+      const lutFiles = await window.electronAPI.scanLutDir(dirPath);
+      if (lutFiles.length === 0) {
+        setStatus('该目录未找到 LUT 文件');
         return;
       }
-      setStatus(`正在加载 ${files.length} 个 LUT...`);
-      await loadLutFiles(files);
-    });
-    input.click();
+      setStatus(`正在加载 ${lutFiles.length} 个 LUT...`);
+      await loadLutFilesElectron(lutFiles);
+      await window.electronAPI.saveLutDir(dirPath);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.webkitdirectory = true;
+      input.accept = '.vlt,.cube';
+      input.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files).filter(f => {
+          const ext = f.name.split('.').pop().toLowerCase();
+          return ext === 'vlt' || ext === 'cube';
+        });
+        if (files.length === 0) {
+          setStatus('未找到 LUT 文件');
+          return;
+        }
+        setStatus(`正在加载 ${files.length} 个 LUT...`);
+        await loadLutFiles(files);
+      });
+      input.click();
+    }
   });
 
   els.sortFavBtn.addEventListener('click', () => {
@@ -158,6 +179,40 @@
   });
 
   /* ── Image loading ── */
+
+  async function loadImageFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (isRawFile(ext)) {
+      if (!isElectron) {
+        setStatus('RAW 格式仅限桌面版支持');
+        return;
+      }
+      setStatus(`正在解析 RAW: ${file.name}...`);
+      const result = await window.electronAPI.extractRawPreview(file.path);
+      if (!result) {
+        setStatus('无法提取 RAW 内嵌预览图');
+        return;
+      }
+      const byteChars = atob(result.data);
+      const bytes = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'image/jpeg' });
+      const blobUrl = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = blobUrl;
+      });
+      state.sourceImage = img;
+      URL.revokeObjectURL(blobUrl);
+      fitCanvas();
+      renderPreview();
+      setStatus(`RAW 预览: ${file.name}`);
+      return;
+    }
+    await loadImage(file);
+  }
 
   async function loadImage(file) {
     const img = new Image();
@@ -289,6 +344,43 @@
     }
     els.lutCount.textContent = `${state.luts.length} 个 LUT`;
     updateButtons();
+  }
+
+  async function loadLutFilesElectron(lutFileEntries) {
+    state.luts = [];
+    state.currentLutIndex = -1;
+
+    for (const entry of lutFileEntries) {
+      try {
+        const text = await window.electronAPI.readLutFile(entry.path);
+        if (!text) continue;
+        const lut = LUTParser.parseLUTFromText(entry.name, text);
+        lut.thumb = generateThumbnail(lut);
+        state.luts.push(lut);
+      } catch (err) {
+        console.warn(`加载失败: ${entry.name}`, err);
+      }
+    }
+
+    state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
+    renderLutList();
+    if (state.luts.length > 0) {
+      selectLut(0);
+    }
+    els.lutCount.textContent = `${state.luts.length} 个 LUT`;
+    updateButtons();
+  }
+
+  if (isElectron) {
+    window.electronAPI.onAutoLoadLuts(async (dirPath) => {
+      setStatus('正在自动加载 LUT...');
+      const lutFiles = await window.electronAPI.scanLutDir(dirPath);
+      if (lutFiles.length > 0) {
+        setStatus(`正在加载 ${lutFiles.length} 个 LUT...`);
+        await loadLutFilesElectron(lutFiles);
+        setStatus(`已加载 ${lutFiles.length} 个 LUT`);
+      }
+    });
   }
 
   /* ── LUT list ── */

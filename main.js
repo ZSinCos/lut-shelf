@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const exifr = require('exifr');
 
 let mainWindow;
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
@@ -112,6 +113,18 @@ ipcMain.handle('read-lut-file', async (event, filePath) => {
     return fs.readFileSync(filePath, 'utf8');
   } catch (e) {
     console.error('读取LUT文件失败:', e);
+    return null;
+  }
+});
+
+ipcMain.handle('extract-raw-preview', async (event, filePath) => {
+  try {
+    const thumb = await exifr.thumbnail(filePath);
+    if (!thumb) throw new Error('未找到内嵌预览图');
+    const buf = Buffer.from(thumb);
+    return { data: buf.toString('base64'), ext: '.jpg' };
+  } catch (e) {
+    console.error('提取RAW预览失败:', e);
     return null;
   }
 });
