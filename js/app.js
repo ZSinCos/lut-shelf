@@ -181,13 +181,17 @@
     c.width = size;
     c.height = size;
     const cx = c.getContext('2d');
-    const imgData = cx.createImageData(size, size);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        const r = x / (size - 1);
-        const g = y / (size - 1);
-        const b = 0.5 + 0.5 * Math.sin((x + y) / size * Math.PI);
+    // draw a solid color so we can see if thumbnails render at all
+    cx.fillStyle = '#e94560';
+    cx.fillRect(0, 0, size, size);
+    // then draw LUT preview in bottom-right half
+    const imgData = cx.createImageData(size / 2, size / 2);
+    for (let y = 0; y < size / 2; y++) {
+      for (let x = 0; x < size / 2; x++) {
+        const i = (y * (size / 2) + x) * 4;
+        const r = x / (size / 2 - 1);
+        const g = y / (size / 2 - 1);
+        const b = 0.5 + 0.5 * Math.sin((x + y) / (size / 2) * Math.PI);
         const [or, og, ob] = LUTParser.sampleLUT(lut, r, g, b);
         imgData.data[i]     = Math.round(or * 255);
         imgData.data[i + 1] = Math.round(og * 255);
@@ -195,7 +199,7 @@
         imgData.data[i + 3] = 255;
       }
     }
-    cx.putImageData(imgData, 0, 0);
+    cx.putImageData(imgData, size / 2, size / 2);
     return c;
   }
 
