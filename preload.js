@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAutoLoadLuts: (callback) => {
     ipcRenderer.on('auto-load-luts', (event, dirPath) => callback(dirPath));
   },
+  onMenuSelectLutDir: (callback) => {
+    ipcRenderer.on('menu-lut-dir-selected', (event, dirPath) => callback(dirPath));
+  },
 });

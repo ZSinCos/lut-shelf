@@ -448,6 +448,17 @@
         setStatus(`已加载 ${lutFiles.length} 个 LUT`);
       }
     });
+    window.electronAPI.onMenuSelectLutDir(async (dirPath) => {
+      setStatus('正在扫描 LUT 文件...');
+      const lutFiles = await window.electronAPI.scanLutDir(dirPath);
+      if (lutFiles.length === 0) {
+        setStatus('该目录未找到 LUT 文件');
+        return;
+      }
+      setStatus(`正在加载 ${lutFiles.length} 个 LUT...`);
+      await loadLutFilesElectron(lutFiles);
+      await window.electronAPI.saveLutDir(dirPath);
+    });
   }
 
   /* ── LUT list ── */
