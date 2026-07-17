@@ -286,6 +286,35 @@ header h1 {
   flex-shrink: 0;
 }
 
+.intensity-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px;
+}
+.intensity-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.intensity-slider {
+  width: 80px;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  background: transparent;
+}
+.intensity-slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.intensity-value {
+  font-size: 11px;
+  color: var(--text-secondary);
+  width: 32px;
+  text-align: right;
+}
+
 .export-group {
   display: inline-flex;
   align-items: stretch;

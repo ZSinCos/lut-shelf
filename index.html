@@ -40,6 +40,11 @@
           </label>
           <button id="toggleCompareBtn" class="btn" disabled>对比模式</button>
           <button id="fitViewBtn" class="btn" disabled>适应视图</button>
+          <div class="intensity-group">
+            <label for="intensitySlider" class="intensity-label">强度</label>
+            <input type="range" id="intensitySlider" min="0" max="100" value="100" class="intensity-slider" disabled />
+            <span id="intensityValue" class="intensity-value">100%</span>
+          </div>
           <div class="export-group">
             <button id="exportBtn" class="btn" disabled>导出</button>
             <select id="exportFormat" class="btn export-format">

@@ -5,6 +5,7 @@
     sourceImage: null,
     sourceFileName: '',
     compareMode: false,
+    lutIntensity: 100,
     splitRatio: 0.5,
     dragging: false,
     sortFav: false,
@@ -22,6 +23,8 @@
     fitViewBtn: document.getElementById('fitViewBtn'),
     exportBtn: document.getElementById('exportBtn'),
     exportFormat: document.getElementById('exportFormat'),
+    intensitySlider: document.getElementById('intensitySlider'),
+    intensityValue: document.getElementById('intensityValue'),
     loadLutDirBtn: document.getElementById('loadLutDirBtn'),
     statusText: document.getElementById('statusText'),
     lutCount: document.getElementById('lutCount'),
@@ -126,6 +129,12 @@
   });
 
   els.exportBtn.addEventListener('click', exportImage);
+
+  els.intensitySlider.addEventListener('input', () => {
+    state.lutIntensity = parseInt(els.intensitySlider.value);
+    els.intensityValue.textContent = `${state.lutIntensity}%`;
+    renderPreview();
+  });
 
   const isElectron = !!window.electronAPI;
   const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
@@ -359,12 +368,15 @@
     try {
       if (!cacheValid) rebuildCache();
 
+      const alpha = state.lutIntensity / 100;
       ctx.clearRect(0, 0, w, h);
 
       if (state.compareMode) {
         const splitX = Math.round(w * state.splitRatio);
+        ctx.drawImage(origCache, 0, 0, w, h);
+        ctx.globalAlpha = alpha;
         ctx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
-        ctx.drawImage(origCache, splitX, 0, w - splitX, h, splitX, 0, w - splitX, h);
+        ctx.globalAlpha = 1;
         ctx.save();
         ctx.strokeStyle = '#e94560';
         ctx.lineWidth = 2;
@@ -385,7 +397,10 @@
         ctx.fillText('原始', Math.round(splitX + (w - splitX) / 2), 18);
         ctx.restore();
       } else {
-        ctx.drawImage(lutCache, 0, 0);
+        ctx.drawImage(origCache, 0, 0, w, h);
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(lutCache, 0, 0, w, h);
+        ctx.globalAlpha = 1;
       }
     } catch (err) {
       console.error('[App] 渲染错误:', err);
@@ -409,28 +424,46 @@
     const h = state.sourceImage.naturalHeight || state.sourceImage.height;
     setStatus('正在导出...');
 
-    let blob;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = w;
+    exportCanvas.height = h;
+    const exportCtx = exportCanvas.getContext('2d');
+    exportCtx.drawImage(state.sourceImage, 0, 0, w, h);
+
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = w;
+    tmpCanvas.height = h;
+    const tmpCtx = tmpCanvas.getContext('2d');
+
+    let lutRendered = false;
     if (useWebgl && webgl) {
       webgl.resize(w, h);
       webgl.uploadImage(state.sourceImage);
       webgl.uploadLUT(lut);
       const ok = webgl.render(w, h, false);
       if (ok) {
-        blob = await new Promise(resolve => webglCanvas.toBlob(resolve, mimeType));
+        tmpCtx.drawImage(webglCanvas, 0, 0);
+        lutRendered = true;
       }
     }
-
-    if (!blob) {
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = w;
-      exportCanvas.height = h;
-      const exportCtx = exportCanvas.getContext('2d');
-      exportCtx.drawImage(state.sourceImage, 0, 0, w, h);
-      const imageData = exportCtx.getImageData(0, 0, w, h);
+    if (!lutRendered) {
+      tmpCtx.drawImage(state.sourceImage, 0, 0, w, h);
+      const imageData = tmpCtx.getImageData(0, 0, w, h);
       LUTApply.applyLUT(imageData, lut);
-      exportCtx.putImageData(imageData, 0, 0);
-      blob = await new Promise(resolve => exportCanvas.toBlob(resolve, mimeType));
+      tmpCtx.putImageData(imageData, 0, 0);
     }
+
+    const alpha = state.lutIntensity / 100;
+    if (alpha < 1) {
+      exportCtx.globalAlpha = alpha;
+      exportCtx.drawImage(tmpCanvas, 0, 0);
+      exportCtx.globalAlpha = 1;
+    } else {
+      exportCtx.clearRect(0, 0, w, h);
+      exportCtx.drawImage(tmpCanvas, 0, 0);
+    }
+
+    const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, mimeType));
 
     if (!blob) {
       setStatus('导出失败');
@@ -643,6 +676,7 @@
     const canExport = hasLut && hasImage;
     els.exportBtn.disabled = !canExport;
     els.exportFormat.disabled = !canExport;
+    els.intensitySlider.disabled = !(hasLut && hasImage);
   }
 
   /* ── Status ── */
