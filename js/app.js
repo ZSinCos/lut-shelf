@@ -74,21 +74,25 @@
   const THUMB_SIZE = 64;
 
   async function initThumbSource() {
-    if (!isElectron) {
-      // fallback: use a generated gradient for browser mode
+    try {
+      if (!isElectron) {
+        thumbSourceImg = null;
+        return;
+      }
+      const src = await window.electronAPI.thumbGetSource();
+      if (src) {
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = `data:image/jpeg;base64,${src.data}`;
+        });
+        thumbSourceImg = img;
+        console.log('[Thumb] 缩略图源已加载');
+      }
+    } catch (e) {
+      console.warn('[Thumb] 加载缩略图源失败，使用渐变回退:', e.message);
       thumbSourceImg = null;
-      return;
-    }
-    // try loading cached source from disk
-    const src = await window.electronAPI.thumbGetSource();
-    if (src) {
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = `data:image/jpeg;base64,${src.data}`;
-      });
-      thumbSourceImg = img;
     }
   }
 
@@ -108,19 +112,23 @@
     // check disk cache first
     if (isElectron) {
       const key = thumbCacheKey(lut);
-      const cached = await window.electronAPI.thumbCacheGet(key);
-      if (cached) {
-        const img = new Image();
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = `data:image/png;base64,${cached.data}`;
-        });
-        const c = document.createElement('canvas');
-        c.width = THUMB_SIZE;
-        c.height = THUMB_SIZE;
-        c.getContext('2d').drawImage(img, 0, 0);
-        return c;
+      try {
+        const cached = await window.electronAPI.thumbCacheGet(key);
+        if (cached) {
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = `data:image/png;base64,${cached.data}`;
+          });
+          const c = document.createElement('canvas');
+          c.width = THUMB_SIZE;
+          c.height = THUMB_SIZE;
+          c.getContext('2d').drawImage(img, 0, 0);
+          return c;
+        }
+      } catch (e) {
+        console.warn('[Thumb] 缓存读取失败，重新生成:', e.message);
       }
     }
 
