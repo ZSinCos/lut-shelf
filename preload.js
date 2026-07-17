@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMenuSelectLutDir: (callback) => {
     ipcRenderer.on('menu-lut-dir-selected', (event, dirPath) => callback(dirPath));
   },
+  saveFile: (options) => ipcRenderer.invoke('save-file', options),
 });

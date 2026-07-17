@@ -19,6 +19,7 @@
     imageInput: document.getElementById('imageInput'),
     toggleCompareBtn: document.getElementById('toggleCompareBtn'),
     fitViewBtn: document.getElementById('fitViewBtn'),
+    exportBtn: document.getElementById('exportBtn'),
     loadLutDirBtn: document.getElementById('loadLutDirBtn'),
     statusText: document.getElementById('statusText'),
     lutCount: document.getElementById('lutCount'),
@@ -121,6 +122,8 @@
     fitCanvas();
     renderPreview();
   });
+
+  els.exportBtn.addEventListener('click', exportImage);
 
   const isElectron = !!window.electronAPI;
   const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
@@ -388,6 +391,66 @@
     updateButtons();
   }
 
+  /* ── Export ── */
+
+  async function exportImage() {
+    const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
+    if (!state.sourceImage || !lut) return;
+
+    const w = state.sourceImage.naturalWidth || state.sourceImage.width;
+    const h = state.sourceImage.naturalHeight || state.sourceImage.height;
+    setStatus('正在导出...');
+
+    let blob;
+    if (useWebgl && webgl) {
+      webgl.resize(w, h);
+      webgl.uploadImage(state.sourceImage);
+      webgl.uploadLUT(lut);
+      const ok = webgl.render(w, h, false);
+      if (ok) {
+        blob = await new Promise(resolve => webglCanvas.toBlob(resolve, 'image/png'));
+      }
+    }
+
+    if (!blob) {
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = w;
+      exportCanvas.height = h;
+      const exportCtx = exportCanvas.getContext('2d');
+      exportCtx.drawImage(state.sourceImage, 0, 0, w, h);
+      const imageData = exportCtx.getImageData(0, 0, w, h);
+      LUTApply.applyLUT(imageData, lut);
+      exportCtx.putImageData(imageData, 0, 0);
+      blob = await new Promise(resolve => exportCanvas.toBlob(resolve, 'image/png'));
+    }
+
+    if (!blob) {
+      setStatus('导出失败');
+      return;
+    }
+
+    if (isElectron) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        const path = await window.electronAPI.saveFile({
+          dataBase64: base64,
+          defaultName: `lut_${lut.name.replace(/\.[^.]+$/, '')}.png`,
+        });
+        setStatus(path ? `已导出: ${path}` : '导出取消');
+      };
+      reader.readAsDataURL(blob);
+    } else {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lut_${lut.name.replace(/\.[^.]+$/, '')}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus('导出完成');
+    }
+  }
+
   /* ── LUT loading ── */
 
   async function loadLutFiles(files) {
@@ -563,6 +626,7 @@
     const hasImage = !!state.sourceImage;
     els.toggleCompareBtn.disabled = !(hasLut && hasImage);
     els.fitViewBtn.disabled = !hasImage;
+    els.exportBtn.disabled = !(hasLut && hasImage);
   }
 
   /* ── Status ── */
