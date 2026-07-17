@@ -136,6 +136,7 @@ function createWindow() {
     },
   });
 
+  buildMenu();
   mainWindow.loadFile('index.html');
 
   if (process.argv.includes('--dev')) {
