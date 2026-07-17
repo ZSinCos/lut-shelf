@@ -3,6 +3,7 @@
     luts: [],
     currentLutIndex: -1,
     sourceImage: null,
+    sourceFileName: '',
     compareMode: false,
     splitRatio: 0.5,
     dragging: false,
@@ -253,6 +254,7 @@
         img.src = blobUrl;
       });
       state.sourceImage = img;
+      state.sourceFileName = file.name.replace(/\.[^.]+$/, '');
       URL.revokeObjectURL(blobUrl);
       fitCanvas();
       renderPreview();
@@ -275,6 +277,7 @@
       throw new Error('图片尺寸无效');
     }
     state.sourceImage = img;
+    state.sourceFileName = file.name.replace(/\.[^.]+$/, '');
     fitCanvas();
     renderPreview();
     setStatus(`${file.name}`);
@@ -434,7 +437,8 @@
       return;
     }
 
-    const defaultName = `lut_${lut.name.replace(/\.[^.]+$/, '')}.${ext}`;
+    const baseName = state.sourceFileName || 'export';
+    const defaultName = `${baseName}_${lut.name.replace(/\.[^.]+$/, '')}.${ext}`;
 
     if (isElectron) {
       const reader = new FileReader();
