@@ -286,6 +286,33 @@ header h1 {
   flex-shrink: 0;
 }
 
+.dual-lut-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px;
+}
+.lut-b-select {
+  width: 120px;
+  padding: 5px 4px;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  outline: none;
+}
+.lut-b-select:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.blend-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .intensity-group {
   display: inline-flex;
   align-items: center;

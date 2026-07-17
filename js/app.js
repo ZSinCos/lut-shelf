@@ -5,6 +5,9 @@
     sourceImage: null,
     sourceFileName: '',
     compareMode: false,
+    dualLut: false,
+    lutBIndex: -1,
+    lutBlend: 50,
     lutIntensity: 100,
     splitRatio: 0.5,
     dragging: false,
@@ -25,6 +28,11 @@
     exportFormat: document.getElementById('exportFormat'),
     intensitySlider: document.getElementById('intensitySlider'),
     intensityValue: document.getElementById('intensityValue'),
+    dualLutBtn: document.getElementById('dualLutBtn'),
+    dualLutControls: document.getElementById('dualLutControls'),
+    lutBSelect: document.getElementById('lutBSelect'),
+    blendSlider: document.getElementById('blendSlider'),
+    blendValue: document.getElementById('blendValue'),
     loadLutDirBtn: document.getElementById('loadLutDirBtn'),
     statusText: document.getElementById('statusText'),
     lutCount: document.getElementById('lutCount'),
@@ -39,6 +47,10 @@
   let origCtx = origCache.getContext('2d');
   let lutCache = document.createElement('canvas');
   let lutCtx = lutCache.getContext('2d');
+  let lutBCache = document.createElement('canvas');
+  let lutBCtx = lutBCache.getContext('2d');
+  let blendCache = document.createElement('canvas');
+  let blendCtx = blendCache.getContext('2d');
   let webglCanvas = null;
   let webgl = null;
   let useWebgl = false;
@@ -133,6 +145,31 @@
   els.intensitySlider.addEventListener('input', () => {
     state.lutIntensity = parseInt(els.intensitySlider.value);
     els.intensityValue.textContent = `${state.lutIntensity}%`;
+    renderPreview();
+  });
+
+  els.dualLutBtn.addEventListener('click', () => {
+    state.dualLut = !state.dualLut;
+    els.dualLutBtn.textContent = state.dualLut ? '关双LUT' : '双 LUT';
+    els.dualLutControls.style.display = state.dualLut ? 'inline-flex' : 'none';
+    if (state.dualLut && state.luts.length > 1 && state.lutBIndex < 0) {
+      state.lutBIndex = state.luts[0] === state.luts[state.currentLutIndex >= 0 ? state.currentLutIndex : 0] ? 1 : 0;
+      els.lutBSelect.value = state.lutBIndex;
+    }
+    if (state.dualLut && state.lutBIndex >= 0) populateLutBSelect();
+    cacheValid = false;
+    renderPreview();
+  });
+
+  els.blendSlider.addEventListener('input', () => {
+    state.lutBlend = parseInt(els.blendSlider.value);
+    els.blendValue.textContent = `${state.lutBlend}%`;
+    renderPreview();
+  });
+
+  els.lutBSelect.addEventListener('change', () => {
+    state.lutBIndex = parseInt(els.lutBSelect.value);
+    cacheValid = false;
     renderPreview();
   });
 
@@ -313,6 +350,10 @@
     origCache.height = els.canvas.height;
     lutCache.width = els.canvas.width;
     lutCache.height = els.canvas.height;
+    lutBCache.width = els.canvas.width;
+    lutBCache.height = els.canvas.height;
+    blendCache.width = els.canvas.width;
+    blendCache.height = els.canvas.height;
     els.canvas.style.display = 'block';
     els.placeholder.style.display = 'none';
     cacheValid = false;
@@ -321,9 +362,31 @@
 
   /* ── Cache rebuild (only when LUT/image changes) ── */
 
+  function renderLutToCanvas(canvas, ctx, lut) {
+    let ok = false;
+    if (useWebgl && webgl) {
+      webgl.resize(canvas.width, canvas.height);
+      webgl.uploadImage(state.sourceImage);
+      webgl.uploadLUT(lut);
+      ok = webgl.render(canvas.width, canvas.height, false);
+      if (ok) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(webglCanvas, 0, 0);
+      }
+    }
+    if (!ok) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      LUTApply.applyLUT(imageData, lut);
+      ctx.putImageData(imageData, 0, 0);
+    }
+  }
+
   function rebuildCache() {
     if (!state.sourceImage) return;
-    const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
+    const lutA = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
+    const lutB = state.dualLut && state.lutBIndex >= 0 ? state.luts[state.lutBIndex] : null;
     const w = els.canvas.width;
     const h = els.canvas.height;
     if (w === 0 || h === 0) return;
@@ -331,27 +394,16 @@
     origCtx.clearRect(0, 0, w, h);
     origCtx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
 
-    if (lut) {
-      let webglOk = false;
-      if (useWebgl && webgl) {
-        webgl.resize(w, h);
-        webgl.uploadImage(state.sourceImage);
-        webgl.uploadLUT(lut);
-        webglOk = webgl.render(w, h, false);
-        if (webglOk) {
-          lutCtx.clearRect(0, 0, w, h);
-          lutCtx.drawImage(webglCanvas, 0, 0);
-        }
-      }
-      if (!webglOk) {
-        lutCtx.clearRect(0, 0, w, h);
-        lutCtx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
-        const imageData = lutCtx.getImageData(0, 0, w, h);
-        LUTApply.applyLUT(imageData, lut);
-        lutCtx.putImageData(imageData, 0, 0);
-      }
+    if (lutA) {
+      renderLutToCanvas(lutCache, lutCtx, lutA);
     } else {
       lutCtx.clearRect(0, 0, w, h);
+    }
+
+    if (lutB && lutB !== lutA) {
+      renderLutToCanvas(lutBCache, lutBCtx, lutB);
+    } else {
+      lutBCtx.clearRect(0, 0, w, h);
     }
 
     cacheValid = true;
@@ -368,14 +420,26 @@
     try {
       if (!cacheValid) rebuildCache();
 
-      const alpha = state.lutIntensity / 100;
+      const intensityAlpha = state.lutIntensity / 100;
+      const hasLutB = state.dualLut && state.lutBIndex >= 0 && state.lutBIndex !== state.currentLutIndex;
+
       ctx.clearRect(0, 0, w, h);
 
       if (state.compareMode) {
         const splitX = Math.round(w * state.splitRatio);
         ctx.drawImage(origCache, 0, 0, w, h);
-        ctx.globalAlpha = alpha;
-        ctx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
+        if (hasLutB) {
+          blendCtx.clearRect(0, 0, w, h);
+          blendCtx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
+          blendCtx.globalAlpha = state.lutBlend / 100;
+          blendCtx.drawImage(lutBCache, 0, 0, splitX, h, 0, 0, splitX, h);
+          blendCtx.globalAlpha = 1;
+          ctx.globalAlpha = intensityAlpha;
+          ctx.drawImage(blendCache, 0, 0, splitX, h, 0, 0, splitX, h);
+        } else {
+          ctx.globalAlpha = intensityAlpha;
+          ctx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
+        }
         ctx.globalAlpha = 1;
         ctx.save();
         ctx.strokeStyle = '#e94560';
@@ -398,8 +462,18 @@
         ctx.restore();
       } else {
         ctx.drawImage(origCache, 0, 0, w, h);
-        ctx.globalAlpha = alpha;
-        ctx.drawImage(lutCache, 0, 0, w, h);
+        if (hasLutB) {
+          blendCtx.clearRect(0, 0, w, h);
+          blendCtx.drawImage(lutCache, 0, 0, w, h);
+          blendCtx.globalAlpha = state.lutBlend / 100;
+          blendCtx.drawImage(lutBCache, 0, 0, w, h);
+          blendCtx.globalAlpha = 1;
+          ctx.globalAlpha = intensityAlpha;
+          ctx.drawImage(blendCache, 0, 0, w, h);
+        } else {
+          ctx.globalAlpha = intensityAlpha;
+          ctx.drawImage(lutCache, 0, 0, w, h);
+        }
         ctx.globalAlpha = 1;
       }
     } catch (err) {
@@ -410,11 +484,22 @@
     updateButtons();
   }
 
+  function populateLutBSelect() {
+    const sel = els.lutBSelect;
+    sel.innerHTML = '<option value="-1">LUT B（无）</option>' +
+      state.luts.map((l, i) =>
+        `<option value="${i}"${i === state.lutBIndex ? ' selected' : ''}>${escHtml(l.name)}</option>`
+      ).join('');
+  }
+
   /* ── Export ── */
 
   async function exportImage() {
-    const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
-    if (!state.sourceImage || !lut) return;
+    const lutA = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
+    if (!state.sourceImage || !lutA) return;
+
+    const lutB = state.dualLut && state.lutBIndex >= 0 && state.lutBIndex !== state.currentLutIndex
+      ? state.luts[state.lutBIndex] : null;
 
     const fmt = els.exportFormat.value;
     const mimeType = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
@@ -430,37 +515,35 @@
     const exportCtx = exportCanvas.getContext('2d');
     exportCtx.drawImage(state.sourceImage, 0, 0, w, h);
 
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width = w;
-    tmpCanvas.height = h;
-    const tmpCtx = tmpCanvas.getContext('2d');
+    const tmpA = document.createElement('canvas');
+    tmpA.width = w; tmpA.height = h;
+    const tmpACtx = tmpA.getContext('2d');
+    renderLutToCanvas(tmpA, tmpACtx, lutA);
 
-    let lutRendered = false;
-    if (useWebgl && webgl) {
-      webgl.resize(w, h);
-      webgl.uploadImage(state.sourceImage);
-      webgl.uploadLUT(lut);
-      const ok = webgl.render(w, h, false);
-      if (ok) {
-        tmpCtx.drawImage(webglCanvas, 0, 0);
-        lutRendered = true;
-      }
-    }
-    if (!lutRendered) {
-      tmpCtx.drawImage(state.sourceImage, 0, 0, w, h);
-      const imageData = tmpCtx.getImageData(0, 0, w, h);
-      LUTApply.applyLUT(imageData, lut);
-      tmpCtx.putImageData(imageData, 0, 0);
-    }
-
-    const alpha = state.lutIntensity / 100;
-    if (alpha < 1) {
-      exportCtx.globalAlpha = alpha;
-      exportCtx.drawImage(tmpCanvas, 0, 0);
+    if (lutB) {
+      const tmpB = document.createElement('canvas');
+      tmpB.width = w; tmpB.height = h;
+      const tmpBCtx = tmpB.getContext('2d');
+      renderLutToCanvas(tmpB, tmpBCtx, lutB);
+      exportCtx.clearRect(0, 0, w, h);
+      exportCtx.drawImage(tmpA, 0, 0);
+      exportCtx.globalAlpha = state.lutBlend / 100;
+      exportCtx.drawImage(tmpB, 0, 0);
       exportCtx.globalAlpha = 1;
     } else {
       exportCtx.clearRect(0, 0, w, h);
-      exportCtx.drawImage(tmpCanvas, 0, 0);
+      exportCtx.drawImage(tmpA, 0, 0);
+    }
+
+    const intensityAlpha = state.lutIntensity / 100;
+    if (intensityAlpha < 1) {
+      const origFull = document.createElement('canvas');
+      origFull.width = w; origFull.height = h;
+      const origFullCtx = origFull.getContext('2d');
+      origFullCtx.drawImage(state.sourceImage, 0, 0, w, h);
+      exportCtx.globalAlpha = intensityAlpha;
+      exportCtx.drawImage(exportCanvas, 0, 0);
+      exportCtx.globalAlpha = 1;
     }
 
     const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, mimeType));
@@ -471,7 +554,10 @@
     }
 
     const baseName = state.sourceFileName || 'export';
-    const defaultName = `${baseName}_${lut.name.replace(/\.[^.]+$/, '')}.${ext}`;
+    const lutName = lutB
+      ? `${lutA.name.replace(/\.[^.]+$/, '')}_${lutB.name.replace(/\.[^.]+$/, '')}`
+      : lutA.name.replace(/\.[^.]+$/, '');
+    const defaultName = `${baseName}_${lutName}.${ext}`;
 
     if (isElectron) {
       const reader = new FileReader();
@@ -516,6 +602,7 @@
 
     state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
     renderLutList();
+    populateLutBSelect();
     selectLut(-1);
     els.lutCount.textContent = `${state.luts.length} 个 LUT`;
     updateButtons();
@@ -539,6 +626,7 @@
 
     state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
     renderLutList();
+    populateLutBSelect();
     selectLut(-1);
     els.lutCount.textContent = `${state.luts.length} 个 LUT`;
     updateButtons();
@@ -661,11 +749,18 @@
   /* ── Info bar ── */
 
   function updateInfoBar() {
+    const hasLutB = state.dualLut && state.lutBIndex >= 0 && state.lutBIndex !== state.currentLutIndex;
     if (state.currentLutIndex >= 0) {
       const lut = state.luts[state.currentLutIndex];
-      els.lutInfoName.textContent = lut.name;
-      const engine = useWebgl ? 'WebGL' : 'CPU';
-      els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ${engine}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
+      if (hasLutB) {
+        const lutB = state.luts[state.lutBIndex];
+        els.lutInfoName.textContent = `${lut.name} + ${lutB.name}`;
+        els.lutInfoMeta.textContent = `混合 ${state.lutBlend}%  ●  强度 ${state.lutIntensity}%`;
+      } else {
+        els.lutInfoName.textContent = lut.name;
+        const engine = useWebgl ? 'WebGL' : 'CPU';
+        els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ${engine}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
+      }
       els.infoBar.style.display = 'flex';
     } else if (state.currentLutIndex === -1 && state.sourceImage) {
       els.lutInfoName.textContent = '原图';
@@ -687,6 +782,11 @@
     els.exportBtn.disabled = !canExport;
     els.exportFormat.disabled = !canExport;
     els.intensitySlider.disabled = !(hasLut && hasImage);
+    els.dualLutBtn.disabled = !(hasLut && hasImage);
+    const dualActive = state.dualLut && hasLut && hasImage;
+    els.dualLutControls.style.display = dualActive ? 'inline-flex' : 'none';
+    els.lutBSelect.disabled = !dualActive;
+    els.blendSlider.disabled = !dualActive;
   }
 
   /* ── Status ── */

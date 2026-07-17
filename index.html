@@ -39,6 +39,17 @@
             <input type="file" id="imageInput" accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.orf,.raf,.dng,.pef,.srw,.x3f" hidden />
           </label>
           <button id="toggleCompareBtn" class="btn" disabled>对比模式</button>
+          <button id="dualLutBtn" class="btn" disabled>双 LUT</button>
+          <div class="dual-lut-controls" id="dualLutControls" style="display:none">
+            <select id="lutBSelect" class="btn lut-b-select" disabled>
+              <option value="-1">LUT B（无）</option>
+            </select>
+            <div class="blend-group">
+              <label for="blendSlider" class="intensity-label">混合</label>
+              <input type="range" id="blendSlider" min="0" max="100" value="50" class="intensity-slider" disabled />
+              <span id="blendValue" class="intensity-value">50%</span>
+            </div>
+          </div>
           <button id="fitViewBtn" class="btn" disabled>适应视图</button>
           <div class="intensity-group">
             <label for="intensitySlider" class="intensity-label">强度</label>
