@@ -42,6 +42,39 @@
     sortFavBtn: document.getElementById('sortFavBtn'),
   };
 
+  /* ── Sidebar splitter ── */
+  (function initSplitter() {
+    const splitter = document.getElementById('splitter');
+    const sidebar = document.getElementById('lutSidebar');
+    let dragging = false;
+
+    splitter.addEventListener('mousedown', (e) => {
+      dragging = true;
+      splitter.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const rect = sidebar.parentElement.getBoundingClientRect();
+      let w = e.clientX - rect.left;
+      w = Math.max(180, Math.min(w, rect.width * 0.6));
+      sidebar.style.setProperty('--sidebar-width', w + 'px');
+      sidebar.style.width = w + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (dragging) {
+        dragging = false;
+        splitter.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  })();
+
   let ctx = els.canvas.getContext('2d');
   let origCache = document.createElement('canvas');
   let origCtx = origCache.getContext('2d');
