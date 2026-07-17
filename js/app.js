@@ -667,7 +667,7 @@
     for (const file of files) {
       try {
         const lut = await LUTParser.parseLUT(file);
-        lut.thumb = generateThumbnail(lut);
+        lut.thumb = await generateThumbnail(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${file.name}`, err);
@@ -691,7 +691,7 @@
         const text = await window.electronAPI.readLutFile(entry.path);
         if (!text) continue;
         const lut = LUTParser.parseLUTFromText(entry.name, text);
-        lut.thumb = generateThumbnail(lut);
+        lut.thumb = await generateThumbnail(lut);
         state.luts.push(lut);
       } catch (err) {
         console.warn(`加载失败: ${entry.name}`, err);
@@ -1008,7 +1008,7 @@
       const name = relPath.split(/[/\\]/).pop();
       const parsed = LUTParser.parseLUTFromText(name, content);
       parsed._repoRelPath = relPath;
-      parsed.thumb = generateThumbnail(parsed);
+      parsed.thumb = await generateThumbnail(parsed);
       const existing = state.luts.findIndex(l => l._repoRelPath === relPath);
       if (existing >= 0) {
         state.currentLutIndex = existing;
