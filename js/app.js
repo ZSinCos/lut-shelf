@@ -516,9 +516,7 @@
 
     state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
     renderLutList();
-    if (state.luts.length > 0) {
-      selectLut(0);
-    }
+    selectLut(-1);
     els.lutCount.textContent = `${state.luts.length} 个 LUT`;
     updateButtons();
   }
@@ -541,9 +539,7 @@
 
     state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
     renderLutList();
-    if (state.luts.length > 0) {
-      selectLut(0);
-    }
+    selectLut(-1);
     els.lutCount.textContent = `${state.luts.length} 个 LUT`;
     updateButtons();
   }
@@ -589,29 +585,39 @@
       });
     }
 
-    if (filtered.length === 0) {
-      els.lutList.innerHTML = `<div class="empty-state"><p>${keyword ? '无匹配 LUT' : '尚未加载 LUT'}</p></div>`;
-      return;
+    const origActive = state.currentLutIndex === -1;
+    let html = `<div class="lut-item ${origActive ? 'active' : ''}" data-index="-1">
+      <div class="lut-thumb" style="display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text-secondary)">⊘</div>
+      <div class="lut-info">
+        <span class="lut-name">原图</span>
+        <span class="lut-meta">原始图像</span>
+      </div>
+    </div>`;
+
+    if (filtered.length > 0) {
+      html += filtered.map((lut) => {
+        const realIdx = state.luts.indexOf(lut);
+        const isActive = realIdx === state.currentLutIndex;
+        const isFav = state.favorites.includes(lut.name);
+        return `<div class="lut-item ${isActive ? 'active' : ''}" data-index="${realIdx}">
+          <div class="lut-thumb"></div>
+          <div class="lut-info">
+            <span class="lut-name">${escHtml(lut.name)}</span>
+            <span class="lut-meta">${lut.size}³  ${lut.type}</span>
+          </div>
+          <button class="favorite-btn ${isFav ? 'active' : ''}" data-lutname="${lut.name}">${isFav ? '★' : '☆'}</button>
+        </div>`;
+      }).join('');
+    } else if (!keyword) {
+      html += `<div class="empty-state"><p>尚未加载 LUT</p></div>`;
     }
 
-    els.lutList.innerHTML = filtered.map((lut) => {
-      const realIdx = state.luts.indexOf(lut);
-      const isActive = realIdx === state.currentLutIndex;
-      const isFav = state.favorites.includes(lut.name);
-      return `<div class="lut-item ${isActive ? 'active' : ''}" data-index="${realIdx}">
-        <div class="lut-thumb"></div>
-        <div class="lut-info">
-          <span class="lut-name">${escHtml(lut.name)}</span>
-          <span class="lut-meta">${lut.size}³  ${lut.type}</span>
-        </div>
-        <button class="favorite-btn ${isFav ? 'active' : ''}" data-lutname="${lut.name}">${isFav ? '★' : '☆'}</button>
-      </div>`;
-    }).join('');
+    els.lutList.innerHTML = html;
 
     els.lutList.querySelectorAll('.lut-item').forEach(el => {
       const idx = parseInt(el.dataset.index, 10);
       const thumbDiv = el.querySelector('.lut-thumb');
-      if (thumbDiv && state.luts[idx] && state.luts[idx].thumb) {
+      if (idx >= 0 && thumbDiv && state.luts[idx] && state.luts[idx].thumb) {
         thumbDiv.appendChild(state.luts[idx].thumb.cloneNode(true));
       }
       el.addEventListener('click', () => selectLut(idx));
@@ -628,7 +634,7 @@
   /* ── Selection ── */
 
   function selectLut(index) {
-    if (index < 0 || index >= state.luts.length) return;
+    if (index < -1 || index >= state.luts.length) return;
     state.currentLutIndex = index;
     cacheValid = false;
     renderLutList();
@@ -660,6 +666,10 @@
       els.lutInfoName.textContent = lut.name;
       const engine = useWebgl ? 'WebGL' : 'CPU';
       els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ${engine}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
+      els.infoBar.style.display = 'flex';
+    } else if (state.currentLutIndex === -1 && state.sourceImage) {
+      els.lutInfoName.textContent = '原图';
+      els.lutInfoMeta.textContent = '原始图像，无 LUT';
       els.infoBar.style.display = 'flex';
     } else {
       els.infoBar.style.display = 'none';
