@@ -9,7 +9,7 @@ class LUTWebGL {
     this.supported = false;
 
     try {
-      const gl = canvas.getContext('webgl2', { premultipliedAlpha: false });
+      const gl = canvas.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true });
       if (!gl) throw new Error('WebGL 2 not supported');
       this.gl = gl;
       this.initShaders();
