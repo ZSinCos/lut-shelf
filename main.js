@@ -467,3 +467,76 @@ ipcMain.handle('repo-save-meta', async (event, meta) => {
   if (!repoDir) return;
   saveMeta(repoDir, meta);
 });
+
+/* ── Thumbnail system ── */
+
+const THUMB_DIR = path.join(app.getPath('userData'), 'thumbs');
+const THUMB_SOURCE_PATH = path.join(app.getPath('userData'), 'thumb-source.jpg');
+
+function ensureThumbDir() {
+  if (!fs.existsSync(THUMB_DIR)) fs.mkdirSync(THUMB_DIR, { recursive: true });
+}
+
+/* Extract JPEG preview from RAW/any image and save as thumb-source */
+ipcMain.handle('thumb-set-source', async (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    const ext = path.extname(filePath).toLowerCase();
+    let jpegBuf = null;
+    if (['.rw2', '.arw', '.cr2', '.cr3', '.nef', '.nrw', '.orf', '.raf', '.dng', '.pef', '.srw', '.x3f'].includes(ext)) {
+      const raw = fs.readFileSync(filePath);
+      for (let i = 0; i < raw.length - 2; i++) {
+        if (raw[i] === 0xFF && raw[i + 1] === 0xD8 && raw[i + 2] === 0xFF) {
+          let end = raw.length - 2;
+          for (let j = raw.length - 2; j > i; j--) {
+            if (raw[j] === 0xFF && raw[j + 1] === 0xD9) { end = j + 2; break; }
+          }
+          jpegBuf = raw.slice(i, end);
+          break;
+        }
+      }
+    } else {
+      jpegBuf = fs.readFileSync(filePath);
+    }
+    if (!jpegBuf) return false;
+    fs.writeFileSync(THUMB_SOURCE_PATH, jpegBuf);
+    return { data: jpegBuf.toString('base64') };
+  } catch (e) {
+    console.error('设置缩略图源失败:', e);
+    return false;
+  }
+});
+
+ipcMain.handle('thumb-get-source', async () => {
+  try {
+    if (!fs.existsSync(THUMB_SOURCE_PATH)) return null;
+    const buf = fs.readFileSync(THUMB_SOURCE_PATH);
+    return { data: buf.toString('base64') };
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('thumb-cache-get', async (event, key) => {
+  ensureThumbDir();
+  const fp = path.join(THUMB_DIR, `${key}.png`);
+  try {
+    if (!fs.existsSync(fp)) return null;
+    const buf = fs.readFileSync(fp);
+    return { data: buf.toString('base64') };
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('thumb-cache-put', async (event, { key, dataBase64 }) => {
+  ensureThumbDir();
+  try {
+    const buf = Buffer.from(dataBase64, 'base64');
+    fs.writeFileSync(path.join(THUMB_DIR, `${key}.png`), buf);
+    return true;
+  } catch (e) {
+    console.error('缓存缩略图失败:', e);
+    return false;
+  }
+});

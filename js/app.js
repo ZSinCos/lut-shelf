@@ -68,31 +68,105 @@
 
   initWebGL();
 
-  /* ── Thumbnail generation ── */
+  /* ── Thumbnail system (photo-based + disk cache) ── */
 
-  function generateThumbnail(lut) {
-    const size = 16;
-    const c = document.createElement('canvas');
-    c.width = size;
-    c.height = size;
-    const cx = c.getContext('2d');
-    const imgData = cx.createImageData(size, size);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        const r = x / (size - 1);
-        const g = y / (size - 1);
-        const b = 0.5 + 0.5 * Math.sin((x + y) / size * Math.PI);
-        const [or, og, ob] = LUTParser.sampleLUT(lut, r, g, b);
-        imgData.data[i]     = Math.round(or * 255);
-        imgData.data[i + 1] = Math.round(og * 255);
-        imgData.data[i + 2] = Math.round(ob * 255);
-        imgData.data[i + 3] = 255;
+  let thumbSourceImg = null;
+  const THUMB_SIZE = 64;
+
+  async function initThumbSource() {
+    if (!isElectron) {
+      // fallback: use a generated gradient for browser mode
+      thumbSourceImg = null;
+      return;
+    }
+    // try loading cached source from disk
+    const src = await window.electronAPI.thumbGetSource();
+    if (src) {
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = `data:image/jpeg;base64,${src.data}`;
+      });
+      thumbSourceImg = img;
+    }
+  }
+
+  function thumbCacheKey(lut) {
+    // use name + size + type as a stable cache key
+    const raw = `${lut.name}|${lut.size}|${lut.type}`;
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw.charCodeAt(i);
+      hash = ((hash << 5) - hash) + ch;
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  async function generateThumbnail(lut) {
+    // check disk cache first
+    if (isElectron) {
+      const key = thumbCacheKey(lut);
+      const cached = await window.electronAPI.thumbCacheGet(key);
+      if (cached) {
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = `data:image/png;base64,${cached.data}`;
+        });
+        const c = document.createElement('canvas');
+        c.width = THUMB_SIZE;
+        c.height = THUMB_SIZE;
+        c.getContext('2d').drawImage(img, 0, 0);
+        return c;
       }
     }
+
+    // generate thumbnail
+    const c = document.createElement('canvas');
+    c.width = THUMB_SIZE;
+    c.height = THUMB_SIZE;
+    const cx = c.getContext('2d');
+
+    if (thumbSourceImg) {
+      // draw source image covering the canvas
+      const s = thumbSourceImg;
+      const scale = Math.max(THUMB_SIZE / s.width, THUMB_SIZE / s.height);
+      const sw = s.width * scale, sh = s.height * scale;
+      const sx = (sw - THUMB_SIZE) / 2, sy = (sh - THUMB_SIZE) / 2;
+      cx.drawImage(s, 0, 0, s.width, s.height, -sx, -sy, sw, sh);
+    } else {
+      // fallback gradient
+      for (let y = 0; y < THUMB_SIZE; y++) {
+        for (let x = 0; x < THUMB_SIZE; x++) {
+          cx.fillStyle = `rgb(${x/THUMB_SIZE*255|0},${y/THUMB_SIZE*255|0},${128+64*Math.sin((x+y)/THUMB_SIZE*Math.PI)|0})`;
+          cx.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+
+    const imgData = cx.getImageData(0, 0, THUMB_SIZE, THUMB_SIZE);
+    LUTApply.applyLUT(imgData, lut);
     cx.putImageData(imgData, 0, 0);
+
+    // save to disk cache
+    if (isElectron) {
+      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/png'));
+      const reader = new FileReader();
+      reader.onload = () => {
+        const b64 = reader.result.split(',')[1];
+        window.electronAPI.thumbCachePut(thumbCacheKey(lut), b64);
+      };
+      reader.readAsDataURL(blob);
+    }
+
     return c;
   }
+
+  // Initialize thumb source on load
+  initThumbSource();
 
   /* ── Events ── */
 
@@ -809,6 +883,7 @@
     els.repoActions = document.getElementById('repoActions');
     els.repoImportBtn = document.getElementById('repoImportBtn');
     els.repoNewFolderBtn = document.getElementById('repoNewFolderBtn');
+    els.repoSetThumbBtn = document.getElementById('repoSetThumbBtn');
     els.repoEditModal = document.getElementById('repoEditModal');
     els.editModalTitle = document.getElementById('editModalTitle');
     els.editModalClose = document.getElementById('editModalClose');
@@ -1035,6 +1110,36 @@
         const ok = await window.electronAPI.repoCreateFolder(target);
         if (ok) loadRepoView();
       }
+    });
+
+    // One-time thumb source setup from user's RW2 file
+    (async () => {
+      const existing = await window.electronAPI.thumbGetSource();
+      if (!existing) {
+        const rw2Path = 'C:\\Users\\SinCos\\Desktop\\P1011709.RW2';
+        const result = await window.electronAPI.thumbSetSource(rw2Path);
+        if (result) {
+          await initThumbSource();
+        }
+      }
+    })();
+
+    els.repoSetThumbBtn.addEventListener('click', async () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.orf,.raf,.dng';
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+        if (window.electronAPI) {
+          const result = await window.electronAPI.thumbSetSource(file.path);
+          if (result) {
+            await initThumbSource();
+            setStatus('缩略图源已更新');
+          }
+        }
+      });
+      input.click();
     });
 
     // Initial load if repo dir already set

@@ -25,4 +25,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   repoMoveFile: (fileRelPath, targetFolderRel) => ipcRenderer.invoke('repo-move-file', { fileRelPath, targetFolderRel }),
   repoLoadMeta: () => ipcRenderer.invoke('repo-load-meta'),
   repoSaveMeta: (meta) => ipcRenderer.invoke('repo-save-meta', meta),
+  /* Thumbnail API */
+  thumbSetSource: (filePath) => ipcRenderer.invoke('thumb-set-source', filePath),
+  thumbGetSource: () => ipcRenderer.invoke('thumb-get-source'),
+  thumbCacheGet: (key) => ipcRenderer.invoke('thumb-cache-get', key),
+  thumbCachePut: (key, dataBase64) => ipcRenderer.invoke('thumb-cache-put', { key, dataBase64 }),
 });
