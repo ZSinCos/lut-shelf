@@ -29,9 +29,14 @@
   };
 
   let ctx = els.canvas.getContext('2d');
+  let origCache = document.createElement('canvas');
+  let origCtx = origCache.getContext('2d');
+  let lutCache = document.createElement('canvas');
+  let lutCtx = lutCache.getContext('2d');
   let webglCanvas = null;
   let webgl = null;
   let useWebgl = false;
+  let cacheValid = false;
   let resizeTimer = null;
 
   function initWebGL() {
@@ -288,55 +293,71 @@
     const h = Math.floor(state.sourceImage.height * scale);
     els.canvas.width = Math.max(w, 1);
     els.canvas.height = Math.max(h, 1);
+    origCache.width = els.canvas.width;
+    origCache.height = els.canvas.height;
+    lutCache.width = els.canvas.width;
+    lutCache.height = els.canvas.height;
     els.canvas.style.display = 'block';
     els.placeholder.style.display = 'none';
+    cacheValid = false;
     console.log(`[App] 画布: ${els.canvas.width}x${els.canvas.height}, 容器: ${rect.width}x${rect.height}, 图片: ${state.sourceImage.width}x${state.sourceImage.height}`);
   }
 
-  /* ── Preview rendering ── */
+  /* ── Cache rebuild (only when LUT/image changes) ── */
 
-  function renderPreview() {
+  function rebuildCache() {
     if (!state.sourceImage) return;
     const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
     const w = els.canvas.width;
     const h = els.canvas.height;
+    if (w === 0 || h === 0) return;
 
-    if (w === 0 || h === 0) {
-      console.warn('[App] 画布尺寸为 0，跳过渲染');
-      return;
-    }
+    origCtx.clearRect(0, 0, w, h);
+    origCtx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
 
-    try {
+    if (lut) {
       let webglOk = false;
-
-      if (useWebgl && webgl && lut) {
+      if (useWebgl && webgl) {
         webgl.resize(w, h);
         webgl.uploadImage(state.sourceImage);
         webgl.uploadLUT(lut);
-        webglOk = webgl.render(w, h, state.compareMode, state.splitRatio);
+        webglOk = webgl.render(w, h, false);
         if (webglOk) {
-          ctx.clearRect(0, 0, w, h);
-          ctx.drawImage(webglCanvas, 0, 0);
+          lutCtx.clearRect(0, 0, w, h);
+          lutCtx.drawImage(webglCanvas, 0, 0);
         }
       }
-
       if (!webglOk) {
-        ctx.clearRect(0, 0, w, h);
-        ctx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
-
-        if (lut) {
-          const imageData = ctx.getImageData(0, 0, w, h);
-          if (state.compareMode) {
-            LUTApply.applyLUTWithSplit(imageData, lut, state.splitRatio);
-          } else {
-            LUTApply.applyLUT(imageData, lut);
-          }
-          ctx.putImageData(imageData, 0, 0);
-        }
+        lutCtx.clearRect(0, 0, w, h);
+        lutCtx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
+        const imageData = lutCtx.getImageData(0, 0, w, h);
+        LUTApply.applyLUT(imageData, lut);
+        lutCtx.putImageData(imageData, 0, 0);
       }
+    } else {
+      lutCtx.clearRect(0, 0, w, h);
+    }
+
+    cacheValid = true;
+  }
+
+  /* ── Preview rendering (uses caches for fast blitting) ── */
+
+  function renderPreview() {
+    if (!state.sourceImage) return;
+    const w = els.canvas.width;
+    const h = els.canvas.height;
+    if (w === 0 || h === 0) return;
+
+    try {
+      if (!cacheValid) rebuildCache();
+
+      ctx.clearRect(0, 0, w, h);
 
       if (state.compareMode) {
         const splitX = Math.round(w * state.splitRatio);
+        ctx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
+        ctx.drawImage(origCache, splitX, 0, w - splitX, h, splitX, 0, w - splitX, h);
         ctx.save();
         ctx.strokeStyle = '#e94560';
         ctx.lineWidth = 2;
@@ -356,6 +377,8 @@
         ctx.fillText('LUT', Math.round(splitX / 2), 18);
         ctx.fillText('原始', Math.round(splitX + (w - splitX) / 2), 18);
         ctx.restore();
+      } else {
+        ctx.drawImage(lutCache, 0, 0);
       }
     } catch (err) {
       console.error('[App] 渲染错误:', err);
@@ -486,6 +509,7 @@
   function selectLut(index) {
     if (index < 0 || index >= state.luts.length) return;
     state.currentLutIndex = index;
+    cacheValid = false;
     renderLutList();
     renderPreview();
     const el = els.lutList.querySelector(`.lut-item[data-index="${index}"]`);
