@@ -119,10 +119,31 @@ ipcMain.handle('read-lut-file', async (event, filePath) => {
 
 ipcMain.handle('extract-raw-preview', async (event, filePath) => {
   try {
-    const thumb = await exifr.thumbnail(filePath);
-    if (!thumb) throw new Error('未找到内嵌预览图');
-    const buf = Buffer.from(thumb);
-    return { data: buf.toString('base64'), ext: '.jpg' };
+    let thumb = await exifr.thumbnail(filePath);
+    if (thumb) {
+      const buf = Buffer.from(thumb);
+      return { data: buf.toString('base64'), ext: '.jpg' };
+    }
+    const raw = fs.readFileSync(filePath);
+    let jpegStart = -1;
+    for (let i = 0; i < raw.length - 2; i++) {
+      if (raw[i] === 0xFF && raw[i + 1] === 0xD8 && raw[i + 2] === 0xFF) {
+        jpegStart = i;
+        break;
+      }
+    }
+    if (jpegStart < 0) throw new Error('未找到 JPEG 数据');
+    let jpegEnd = -1;
+    for (let i = raw.length - 2; i > jpegStart; i--) {
+      if (raw[i] === 0xFF && raw[i + 1] === 0xD9) {
+        jpegEnd = i + 2;
+        break;
+      }
+    }
+    if (jpegEnd < 0) throw new Error('未找到 JPEG 结束标记');
+    const jpegBuf = raw.slice(jpegStart, jpegEnd);
+    console.log(`[RAW] 内嵌JPEG: 偏移 ${jpegStart}, 大小 ${jpegBuf.length} 字节`);
+    return { data: jpegBuf.toString('base64'), ext: '.jpg' };
   } catch (e) {
     console.error('提取RAW预览失败:', e);
     return null;
