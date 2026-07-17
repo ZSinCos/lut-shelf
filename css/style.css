@@ -286,6 +286,30 @@ header h1 {
   flex-shrink: 0;
 }
 
+.export-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+.export-group .btn {
+  border-radius: 5px 0 0 5px;
+}
+.export-format {
+  width: 56px;
+  padding: 5px 4px;
+  border-radius: 0 5px 5px 0 !important;
+  border-left: none !important;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  outline: none;
+}
+.export-format:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .status-text {
   margin-left: auto;
   font-size: 12px;

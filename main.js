@@ -215,7 +215,7 @@ ipcMain.handle('save-file', async (event, options) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: '导出图片',
     defaultPath: options.defaultName || 'export.png',
-    filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+    filters: options.filters || [{ name: 'PNG 图片', extensions: ['png'] }],
   });
   if (result.canceled || !result.filePath) return null;
   const buf = Buffer.from(options.dataBase64, 'base64');

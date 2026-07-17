@@ -20,6 +20,7 @@
     toggleCompareBtn: document.getElementById('toggleCompareBtn'),
     fitViewBtn: document.getElementById('fitViewBtn'),
     exportBtn: document.getElementById('exportBtn'),
+    exportFormat: document.getElementById('exportFormat'),
     loadLutDirBtn: document.getElementById('loadLutDirBtn'),
     statusText: document.getElementById('statusText'),
     lutCount: document.getElementById('lutCount'),
@@ -397,6 +398,10 @@
     const lut = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
     if (!state.sourceImage || !lut) return;
 
+    const fmt = els.exportFormat.value;
+    const mimeType = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
+    const ext = fmt === 'jpg' ? 'jpg' : 'png';
+
     const w = state.sourceImage.naturalWidth || state.sourceImage.width;
     const h = state.sourceImage.naturalHeight || state.sourceImage.height;
     setStatus('正在导出...');
@@ -408,7 +413,7 @@
       webgl.uploadLUT(lut);
       const ok = webgl.render(w, h, false);
       if (ok) {
-        blob = await new Promise(resolve => webglCanvas.toBlob(resolve, 'image/png'));
+        blob = await new Promise(resolve => webglCanvas.toBlob(resolve, mimeType));
       }
     }
 
@@ -421,7 +426,7 @@
       const imageData = exportCtx.getImageData(0, 0, w, h);
       LUTApply.applyLUT(imageData, lut);
       exportCtx.putImageData(imageData, 0, 0);
-      blob = await new Promise(resolve => exportCanvas.toBlob(resolve, 'image/png'));
+      blob = await new Promise(resolve => exportCanvas.toBlob(resolve, mimeType));
     }
 
     if (!blob) {
@@ -429,13 +434,18 @@
       return;
     }
 
+    const defaultName = `lut_${lut.name.replace(/\.[^.]+$/, '')}.${ext}`;
+
     if (isElectron) {
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = reader.result.split(',')[1];
         const path = await window.electronAPI.saveFile({
           dataBase64: base64,
-          defaultName: `lut_${lut.name.replace(/\.[^.]+$/, '')}.png`,
+          defaultName,
+          filters: fmt === 'jpg'
+            ? [{ name: 'JPEG 图片', extensions: ['jpg', 'jpeg'] }]
+            : [{ name: 'PNG 图片', extensions: ['png'] }],
         });
         setStatus(path ? `已导出: ${path}` : '导出取消');
       };
@@ -444,7 +454,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `lut_${lut.name.replace(/\.[^.]+$/, '')}.png`;
+      a.download = defaultName;
       a.click();
       URL.revokeObjectURL(url);
       setStatus('导出完成');
@@ -626,7 +636,9 @@
     const hasImage = !!state.sourceImage;
     els.toggleCompareBtn.disabled = !(hasLut && hasImage);
     els.fitViewBtn.disabled = !hasImage;
-    els.exportBtn.disabled = !(hasLut && hasImage);
+    const canExport = hasLut && hasImage;
+    els.exportBtn.disabled = !canExport;
+    els.exportFormat.disabled = !canExport;
   }
 
   /* ── Status ── */

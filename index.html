@@ -40,7 +40,13 @@
           </label>
           <button id="toggleCompareBtn" class="btn" disabled>对比模式</button>
           <button id="fitViewBtn" class="btn" disabled>适应视图</button>
-          <button id="exportBtn" class="btn" disabled>导出 PNG</button>
+          <div class="export-group">
+            <button id="exportBtn" class="btn" disabled>导出</button>
+            <select id="exportFormat" class="btn export-format">
+              <option value="png">PNG</option>
+              <option value="jpg">JPG</option>
+            </select>
+          </div>
           <span id="statusText" class="status-text"></span>
         </div>
         <div class="canvas-container" id="canvasContainer">
