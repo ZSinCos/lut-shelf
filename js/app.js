@@ -242,17 +242,37 @@
 
   /* ── Bookshelf Grid ── */
 
-  const PAGE_SIZE = 60;
-  const pagination = { files: [], page: 0, totalPages: 0 };
+  const MIN_CARD_W = 180;
+  const ROWS_PER_PAGE = 5;
+  const pagination = { files: [], page: 0, pageSize: 30, totalPages: 0 };
 
   let shelfObserver = null;
   let wheelAccum = 0;
+  let gridResizeObs = null;
+
+  function calcPageSize() {
+    const w = els.shelfGrid.clientWidth;
+    if (w <= 0) return 30;
+    const gap = 12;
+    const cols = Math.max(1, Math.floor((w + gap) / (MIN_CARD_W + gap)));
+    return cols * ROWS_PER_PAGE;
+  }
+
+  function recalcPagination() {
+    const newSize = calcPageSize();
+    if (newSize === pagination.pageSize && pagination.totalPages > 0) return false;
+    pagination.pageSize = newSize;
+    pagination.totalPages = Math.max(1, Math.ceil(pagination.files.length / newSize));
+    pagination.page = Math.min(pagination.page, pagination.totalPages - 1);
+    return true;
+  }
 
   function renderShelf(files) {
     const grid = els.shelfGrid;
     pagination.files = files;
     pagination.page = 0;
-    pagination.totalPages = Math.max(1, Math.ceil(files.length / PAGE_SIZE));
+    pagination.pageSize = calcPageSize();
+    pagination.totalPages = Math.max(1, Math.ceil(files.length / pagination.pageSize));
     if (files.length === 0) {
       grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
       els.shelfPagination.style.display = 'none';
@@ -288,9 +308,9 @@
       }
     }, { rootMargin: '200px' });
 
-    const { files, page, totalPages } = pagination;
-    const start = page * PAGE_SIZE;
-    const pageFiles = files.slice(start, start + PAGE_SIZE);
+    const { files, page, pageSize, totalPages } = pagination;
+    const start = page * pageSize;
+    const pageFiles = files.slice(start, start + pageSize);
 
     for (const f of pageFiles) {
       const card = createShelfCard(f);
@@ -335,6 +355,17 @@
       e.preventDefault();
     }
   }, { passive: false });
+
+  /* Watch grid width changes (info panel open/close, resize) */
+  if (window.ResizeObserver) {
+    gridResizeObs = new ResizeObserver(() => {
+      if (!pagination.files.length || searchActive) return;
+      if (recalcPagination()) renderPage();
+    });
+    setTimeout(() => {
+      if (els.shelfGrid) gridResizeObs.observe(els.shelfGrid);
+    }, 100);
+  }
 
   function extname(name) {
     const i = name.lastIndexOf('.');
