@@ -57,6 +57,11 @@
     clearImageBtn: document.getElementById('clearImageBtn'),
     expandAllBtn: document.getElementById('expandAllBtn'),
     collapseAllBtn: document.getElementById('collapseAllBtn'),
+    zoomSlider: document.getElementById('zoomSlider'),
+    zoomLabel: document.getElementById('zoomLabel'),
+    zoomResetBtn: document.getElementById('zoomResetBtn'),
+    zoomControl: document.getElementById('zoomControl'),
+    previewCanvasWrap: document.getElementById('previewCanvasWrap'),
     tagList: document.getElementById('tagList'),
     addTagBtn: document.getElementById('addTagBtn'),
     infoTags: document.getElementById('infoTags'),
@@ -296,6 +301,8 @@
 
   let shelfObserver = null;
   let wheelAccum = 0;
+
+  state.zoom = 100;
   let gridResizeObs = null;
 
   function calcPageSize() {
@@ -947,6 +954,13 @@
     if (!state.currentLut) return;
     els.previewOverlay.style.display = 'flex';
     state.previewActive = true;
+    state.zoom = 100;
+    if (state.sourceImage && state.sourceImage !== thumbSourceImg) {
+      els.zoomControl.style.display = 'flex';
+      applyZoom();
+    } else {
+      els.zoomControl.style.display = 'none';
+    }
     if (!state.sourceImage) {
       loadDefaultImage();
     }
@@ -955,7 +969,35 @@
   function closePreview() {
     els.previewOverlay.style.display = 'none';
     state.previewActive = false;
+    state.zoom = 100;
   }
+
+  /* ── Zoom ── */
+
+  function applyZoom() {
+    const z = state.zoom / 100;
+    els.previewCanvas.style.transform = `scale(${z})`;
+    els.zoomLabel.textContent = `${state.zoom}%`;
+    els.zoomSlider.value = state.zoom;
+  }
+
+  els.zoomSlider.addEventListener('input', () => {
+    state.zoom = parseInt(els.zoomSlider.value);
+    applyZoom();
+  });
+
+  els.zoomResetBtn.addEventListener('click', () => {
+    state.zoom = 100;
+    applyZoom();
+  });
+
+  els.previewCanvasWrap.addEventListener('wheel', (e) => {
+    if (!state.previewActive) return;
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -10 : 10;
+    state.zoom = Math.max(10, Math.min(400, state.zoom + delta));
+    applyZoom();
+  }, { passive: false });
 
   /* ── Image handling ── */
 
@@ -968,6 +1010,7 @@
       cacheValid = false;
       renderPreview();
     }
+    els.zoomControl.style.display = 'none';
   }
 
   els.imageInput.addEventListener('change', async (e) => {
@@ -1018,6 +1061,9 @@
       cacheValid = false;
       renderPreview();
       setStatus(`RAW: ${file.name}`);
+      els.zoomControl.style.display = 'flex';
+      state.zoom = 100;
+      applyZoom();
       return;
     }
     const img = new Image();
@@ -1030,6 +1076,9 @@
     renderPreview();
     setStatus(file.name);
     URL.revokeObjectURL(url);
+    els.zoomControl.style.display = 'flex';
+    state.zoom = 100;
+    applyZoom();
   }
 
   function fitCanvas() {

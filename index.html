@@ -85,10 +85,15 @@
             </div>
             <span id="statusText" class="status-text"></span>
           </div>
-          <div class="preview-canvas-wrap">
+          <div class="preview-canvas-wrap" id="previewCanvasWrap">
             <canvas id="previewCanvas"></canvas>
             <div class="placeholder" id="placeholder">
               <p>拖入图片或点击「上传图片」</p>
+            </div>
+            <div class="zoom-control" id="zoomControl" style="display:none">
+              <button id="zoomResetBtn" class="zoom-btn" title="重置缩放">1:1</button>
+              <input type="range" id="zoomSlider" class="zoom-slider" min="10" max="400" value="100" />
+              <span id="zoomLabel" class="zoom-label">100%</span>
             </div>
           </div>
         </div>

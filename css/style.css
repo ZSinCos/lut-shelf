@@ -720,8 +720,50 @@ header h1 {
   display: none;
   box-shadow: 0 2px 20px rgba(0,0,0,0.4);
   border-radius: 2px;
-  max-width: 100%;
-  max-height: 100%;
+  transform-origin: center center;
+}
+
+.zoom-control {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,0,0,0.65);
+  border-radius: 6px;
+  padding: 5px 10px;
+  z-index: 30;
+}
+
+.zoom-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 3px;
+  color: #ccc;
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.zoom-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.zoom-slider {
+  width: 80px;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.zoom-label {
+  font-size: 11px;
+  color: #ccc;
+  min-width: 36px;
+  text-align: center;
 }
 
 .preview-canvas-wrap .placeholder {
