@@ -1,119 +1,71 @@
 (function () {
   const state = {
-    luts: [],
-    currentLutIndex: -1,
+    rootPath: null,
+    treeData: null,
+    currentLutPath: null,
+    currentLut: null,
     sourceImage: null,
     sourceFileName: '',
-    compareMode: false,
-    dualLut: false,
-    lutBIndex: -1,
-    lutBlend: 50,
     lutIntensity: 100,
-    splitRatio: 0.5,
-    dragging: false,
-    sortFav: false,
-    favorites: JSON.parse(localStorage.getItem('lutFavorites') || '[]'),
-    repoThumbSize: 90,
-    repoOrder: null,
+    compareMode: false,
   };
 
   const els = {
     canvas: document.getElementById('previewCanvas'),
     container: document.getElementById('canvasContainer'),
     placeholder: document.getElementById('placeholder'),
-    lutList: document.getElementById('lutList'),
-    lutSearch: document.getElementById('lutSearch'),
+    folderTree: document.getElementById('folderTree'),
     imageInput: document.getElementById('imageInput'),
+    loadDirBtn: document.getElementById('loadDirBtn'),
+    headerPath: document.getElementById('headerPath'),
     toggleCompareBtn: document.getElementById('toggleCompareBtn'),
     fitViewBtn: document.getElementById('fitViewBtn'),
     exportBtn: document.getElementById('exportBtn'),
     exportFormat: document.getElementById('exportFormat'),
     intensitySlider: document.getElementById('intensitySlider'),
     intensityValue: document.getElementById('intensityValue'),
-    dualLutBtn: document.getElementById('dualLutBtn'),
-    dualLutControls: document.getElementById('dualLutControls'),
-    lutBSelect: document.getElementById('lutBSelect'),
-    blendSlider: document.getElementById('blendSlider'),
-    blendValue: document.getElementById('blendValue'),
-    loadLutDirBtn: document.getElementById('loadLutDirBtn'),
     statusText: document.getElementById('statusText'),
-    lutCount: document.getElementById('lutCount'),
-    infoBar: document.getElementById('infoBar'),
-    lutInfoName: document.getElementById('lutInfoName'),
-    lutInfoMeta: document.getElementById('lutInfoMeta'),
-    sortFavBtn: document.getElementById('sortFavBtn'),
+    infoEmpty: document.getElementById('infoEmpty'),
+    infoContent: document.getElementById('infoContent'),
+    infoName: document.getElementById('infoName'),
+    infoAuthor: document.getElementById('infoAuthor'),
+    infoDesc: document.getElementById('infoDesc'),
+    infoFormat: document.getElementById('infoFormat'),
+    infoSize: document.getElementById('infoSize'),
+    infoPath: document.getElementById('infoPath'),
+    infoPreviewCanvas: document.getElementById('infoPreviewCanvas'),
   };
 
-  /* ── Sidebar splitter ── */
-  (function initSplitter() {
-    const splitter = document.getElementById('splitter');
-    const sidebar = document.getElementById('lutSidebar');
-    let dragging = false;
-
-    splitter.addEventListener('mousedown', (e) => {
-      dragging = true;
-      splitter.classList.add('active');
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!dragging) return;
-      const rect = sidebar.parentElement.getBoundingClientRect();
-      let w = e.clientX - rect.left;
-      w = Math.max(180, Math.min(w, rect.width * 0.6));
-      sidebar.style.setProperty('--sidebar-width', w + 'px');
-      sidebar.style.width = w + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (dragging) {
-        dragging = false;
-        splitter.classList.remove('active');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      }
-    });
-  })();
+  const isElectron = !!window.electronAPI;
+  const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
 
   let ctx = els.canvas.getContext('2d');
   let origCache = document.createElement('canvas');
   let origCtx = origCache.getContext('2d');
   let lutCache = document.createElement('canvas');
   let lutCtx = lutCache.getContext('2d');
-  let lutBCache = document.createElement('canvas');
-  let lutBCtx = lutBCache.getContext('2d');
-  let blendCache = document.createElement('canvas');
-  let blendCtx = blendCache.getContext('2d');
+  let cacheValid = false;
+  let resizeTimer = null;
+
   let webglCanvas = null;
   let webgl = null;
   let useWebgl = false;
-  let cacheValid = false;
-  let resizeTimer = null;
 
   function initWebGL() {
     webglCanvas = document.createElement('canvas');
     webgl = new LUTWebGL(webglCanvas);
     useWebgl = webgl.supported;
-    if (useWebgl) {
-      console.log('[App] 使用 WebGL 加速渲染');
-    }
   }
-
   initWebGL();
 
-  /* ── Thumbnail system (photo-based + disk cache) ── */
+  /* ── Thumb source ── */
 
   let thumbSourceImg = null;
   const THUMB_SIZE = 64;
 
   async function initThumbSource() {
+    if (!isElectron) return;
     try {
-      if (!isElectron) {
-        thumbSourceImg = null;
-        return;
-      }
       const src = await window.electronAPI.thumbGetSource();
       if (src) {
         const img = new Image();
@@ -123,17 +75,25 @@
           img.src = `data:image/jpeg;base64,${src.data}`;
         });
         thumbSourceImg = img;
-        console.log('[Thumb] 缩略图源已加载');
       }
     } catch (e) {
-      console.warn('[Thumb] 加载缩略图源失败，使用渐变回退:', e.message);
       thumbSourceImg = null;
     }
   }
 
-  function thumbCacheKey(lut) {
-    // use name + size + type as a stable cache key
-    const raw = `${lut.name}|${lut.size}|${lut.type}`;
+  (async () => {
+    if (isElectron) {
+      const existing = await window.electronAPI.thumbGetSource();
+      if (!existing) {
+        const rw2Path = 'C:\\Users\\SinCos\\Desktop\\P1011709.RW2';
+        await window.electronAPI.thumbSetSource(rw2Path);
+      }
+    }
+    await initThumbSource();
+  })();
+
+  function thumbCacheKey(lutName, size, type) {
+    const raw = `${lutName}|${size}|${type}`;
     let hash = 0;
     for (let i = 0; i < raw.length; i++) {
       const ch = raw.charCodeAt(i);
@@ -143,120 +103,250 @@
     return Math.abs(hash).toString(36);
   }
 
-  async function generateThumbnail(lut) {
-    // check disk cache first
-    if (isElectron) {
-      const key = thumbCacheKey(lut);
-      try {
-        const cached = await window.electronAPI.thumbCacheGet(key);
-        if (cached) {
-          const img = new Image();
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = `data:image/png;base64,${cached.data}`;
-          });
-          const c = document.createElement('canvas');
-          c.width = THUMB_SIZE;
-          c.height = THUMB_SIZE;
-          c.getContext('2d').drawImage(img, 0, 0);
-          return c;
-        }
-      } catch (e) {
-        console.warn('[Thumb] 缓存读取失败，重新生成:', e.message);
-      }
-    }
-
-    // generate thumbnail
+  async function generatePreview(lut, w, h) {
     const c = document.createElement('canvas');
-    c.width = THUMB_SIZE;
-    c.height = THUMB_SIZE;
+    c.width = w;
+    c.height = h;
     const cx = c.getContext('2d');
-
     if (thumbSourceImg) {
       const s = thumbSourceImg;
-      const scale = Math.max(THUMB_SIZE / s.width, THUMB_SIZE / s.height);
+      const scale = Math.max(w / s.width, h / s.height);
       const sw = s.width * scale, sh = s.height * scale;
-      const sx = (sw - THUMB_SIZE) / 2, sy = (sh - THUMB_SIZE) / 2;
+      const sx = (sw - w) / 2, sy = (sh - h) / 2;
       cx.drawImage(s, 0, 0, s.width, s.height, -sx, -sy, sw, sh);
     } else {
-      for (let y = 0; y < THUMB_SIZE; y++) {
-        for (let x = 0; x < THUMB_SIZE; x++) {
-          cx.fillStyle = `rgb(${x/THUMB_SIZE*255|0},${y/THUMB_SIZE*255|0},${128+64*Math.sin((x+y)/THUMB_SIZE*Math.PI)|0})`;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          cx.fillStyle = `rgb(${x/w*255|0},${y/h*255|0},${128+64*Math.sin((x+y)/(w)*Math.PI)|0})`;
           cx.fillRect(x, y, 1, 1);
         }
       }
     }
-
-    const imgData = cx.getImageData(0, 0, THUMB_SIZE, THUMB_SIZE);
+    const imgData = cx.getImageData(0, 0, w, h);
     LUTApply.applyLUT(imgData, lut);
     cx.putImageData(imgData, 0, 0);
-
-    if (isElectron) {
-      try {
-        const blob = await new Promise(resolve => c.toBlob(resolve, 'image/png'));
-        const reader = new FileReader();
-        reader.onload = () => {
-          const b64 = reader.result.split(',')[1];
-          window.electronAPI.thumbCachePut(thumbCacheKey(lut), b64);
-        };
-        reader.readAsDataURL(blob);
-      } catch (e) {
-        console.warn('[Thumb] 缓存保存失败:', e.message);
-      }
-    }
-
     return c;
   }
 
-  /* Sync fallback for non-cached / non-electron */
-  function generateThumbnailSync(lut) {
-    const size = 64;
-    const c = document.createElement('canvas');
-    c.width = size;
-    c.height = size;
-    const cx = c.getContext('2d');
-    const imgData = cx.createImageData(size, size);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        const r = x / (size - 1);
-        const g = y / (size - 1);
-        const b = 0.5 + 0.5 * Math.sin((x + y) / size * Math.PI);
-        const [or, og, ob] = LUTParser.sampleLUT(lut, r, g, b);
-        imgData.data[i]     = Math.round(or * 255);
-        imgData.data[i + 1] = Math.round(og * 255);
-        imgData.data[i + 2] = Math.round(ob * 255);
-        imgData.data[i + 3] = 255;
-      }
-    }
-    cx.putImageData(imgData, 0, 0);
-    // also put a debug border
-    cx.strokeStyle = '#e94560';
-    cx.lineWidth = 2;
-    cx.strokeRect(0, 0, size, size);
-    return c;
+  /* ── Folder tree ── */
+
+  els.loadDirBtn.addEventListener('click', async () => {
+    if (!isElectron) return;
+    const dir = await window.electronAPI.selectDir();
+    if (!dir) return;
+    state.rootPath = dir;
+    els.headerPath.textContent = dir;
+    setStatus('正在扫描...');
+    const tree = await window.electronAPI.scanTree(dir);
+    state.treeData = tree;
+    renderTree();
+    setStatus(`已加载 ${countFiles(tree)} 个 LUT`);
+  });
+
+  function countFiles(node) {
+    let n = node.files.length;
+    for (const f of node.folders) n += countFiles(f.children);
+    return n;
   }
 
-  // Initialize thumb source on load (extract RW2 preview on first run)
-  (async () => {
-    if (isElectron) {
-      const existing = await window.electronAPI.thumbGetSource();
-      if (!existing) {
-        const rw2Path = 'C:\\Users\\SinCos\\Desktop\\P1011709.RW2';
-        const result = await window.electronAPI.thumbSetSource(rw2Path);
-        if (result) console.log('[Thumb] 缩略图源已从 RW2 提取');
+  function renderTree() {
+    els.folderTree.innerHTML = '';
+    if (!state.treeData) {
+      els.folderTree.innerHTML = '<div class="empty-state"><p>点击上方「选择目录」</p></div>';
+      return;
+    }
+    const ul = document.createElement('div');
+    renderTreeNodes(state.treeData, '', ul);
+    els.folderTree.appendChild(ul);
+  }
+
+  function renderTreeNodes(node, prefix, container) {
+    for (const f of node.folders) {
+      const item = document.createElement('div');
+      item.className = 'tree-item';
+      item.style.paddingLeft = (prefix ? 8 : 0) + 'px';
+
+      const toggle = document.createElement('span');
+      toggle.className = 'tree-toggle';
+      toggle.textContent = '▶';
+      item.appendChild(toggle);
+
+      const icon = document.createElement('span');
+      icon.className = 'tree-icon';
+      icon.textContent = '📁';
+      item.appendChild(icon);
+
+      const label = document.createElement('span');
+      label.className = 'tree-label';
+      label.textContent = f.name;
+      item.appendChild(label);
+
+      const childrenDiv = document.createElement('div');
+      childrenDiv.className = 'tree-children';
+
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = childrenDiv.classList.toggle('open');
+        toggle.classList.toggle('expanded', isOpen);
+      });
+
+      container.appendChild(item);
+      container.appendChild(childrenDiv);
+      renderTreeNodes(f.children, prefix + '  ', childrenDiv);
+    }
+
+    for (const f of node.files) {
+      const item = document.createElement('div');
+      item.className = 'tree-item';
+      item.style.paddingLeft = (prefix ? 20 : 0) + 'px';
+      item.dataset.path = f.path;
+
+      const toggle = document.createElement('span');
+      toggle.className = 'tree-toggle';
+      toggle.style.visibility = 'hidden';
+      toggle.textContent = '▶';
+      item.appendChild(toggle);
+
+      const icon = document.createElement('span');
+      icon.className = 'tree-icon';
+      icon.textContent = '📄';
+      item.appendChild(icon);
+
+      const label = document.createElement('span');
+      label.className = 'tree-label';
+      label.textContent = f.name;
+      item.appendChild(label);
+
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectLutFile(f);
+      });
+
+      container.appendChild(item);
+    }
+  }
+
+  /* ── Select LUT ── */
+
+  async function selectLutFile(fileInfo) {
+    // Deselect all
+    els.folderTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
+    const item = els.folderTree.querySelector(`[data-path="${fileInfo.path}"]`);
+    if (item) item.classList.add('active');
+
+    state.currentLutPath = fileInfo.path;
+
+    const content = await window.electronAPI.readFile(fileInfo.path);
+    if (!content) { setStatus('读取失败'); return; }
+
+    const lut = LUTParser.parseLUTFromText(fileInfo.name, content);
+    state.currentLut = lut;
+
+    setStatus(`已加载: ${fileInfo.name}`);
+
+    // Show info panel
+    showInfo(lut, fileInfo);
+
+    // Render preview on main canvas if we have an image
+    if (state.sourceImage) {
+      cacheValid = false;
+      renderPreview();
+    } else {
+      // Auto-load reference image for preview
+      await loadDefaultImage();
+    }
+  }
+
+  /* ── Info panel ── */
+
+  function guessAuthor(lutPath, lutName) {
+    const rel = lutPath.replace(state.rootPath, '');
+    const parts = rel.split(/[/\\]/).filter(Boolean);
+    // Look for author hints: folder name patterns like "ejay xxx", "波子Booz xxx", "Plady Chan xxx"
+    for (const p of parts) {
+      const known = ['ejay', '波子', 'booz', 'plady', '林馆长', '凉子', 'forrest'];
+      for (const k of known) {
+        if (p.toLowerCase().includes(k)) return p;
       }
     }
-    await initThumbSource();
-  })();
+    return '';
+  }
 
-  /* ── Events ── */
+  function guessDescription(lutPath, lutName) {
+    const rel = lutPath.replace(state.rootPath, '');
+    const parts = rel.split(/[/\\]/).filter(Boolean);
+    const clues = [];
+    for (const p of parts) {
+      // Extract meaningful descriptions from folder names
+      if (p.includes('胶片')) clues.push('胶片风格');
+      if (p.includes('日系')) clues.push('日系风格');
+      if (p.includes('电影')) clues.push('电影感');
+      if (p.includes('人像')) clues.push('人像优化');
+      if (p.includes('肤色')) clues.push('肤色优化');
+      if (p.includes('黑白')) clues.push('黑白风格');
+      if (p.includes('青橙')) clues.push('青橙色调');
+      if (p.includes('复古')) clues.push('复古风格');
+      if (p.includes('夜景')) clues.push('夜景优化');
+      if (p.includes('vlog') || p.includes('V-Log')) clues.push('基于 V-Log');
+      if (p.includes('raw') || p.includes('RAW')) clues.push('基于 RAW');
+      if (p.includes('新经典')) clues.push('基于新经典模式');
+      if (p.includes('标准')) clues.push('基于标准模式');
+      if (p.includes('直出')) clues.push('直出可用');
+      if (p.includes('机内')) clues.push('支持机内烧录');
+      if (p.includes('后期')) clues.push('后期处理');
+      if (p.includes('监')) clues.push('机内监视用');
+    }
+    const unique = [...new Set(clues)];
+    return unique.length > 0 ? unique.join('，') : '';
+  }
 
-  els.lutSearch.addEventListener('input', renderLutList);
+  function showInfo(lut, fileInfo) {
+    els.infoEmpty.style.display = 'none';
+    els.infoContent.style.display = 'block';
+    const panel = document.getElementById('infoPanel');
+    panel.style.width = '';
+    panel.style.overflow = '';
+    document.getElementById('splitterRight').style.display = '';
 
-  function isRawFile(ext) {
-    return RAW_EXTS.includes(ext.toLowerCase());
+    els.infoName.textContent = lut.name;
+    els.infoAuthor.textContent = guessAuthor(fileInfo.path, lut.name) || '未知';
+    els.infoDesc.textContent = guessDescription(fileInfo.path, lut.name) || '无说明';
+    els.infoFormat.textContent = lut.type.toUpperCase();
+    els.infoSize.textContent = `${lut.size}³`;
+    els.infoPath.textContent = fileInfo.path;
+
+    // Generate preview image
+    const pw = els.infoPreviewCanvas.width = 320;
+    const ph = els.infoPreviewCanvas.height = 180;
+    const pctx = els.infoPreviewCanvas.getContext('2d');
+
+    if (thumbSourceImg) {
+      generatePreview(lut, pw, ph).then(c => {
+        pctx.clearRect(0, 0, pw, ph);
+        pctx.drawImage(c, 0, 0);
+      });
+    } else {
+      pctx.fillStyle = '#0f3460';
+      pctx.fillRect(0, 0, pw, ph);
+      pctx.fillStyle = '#8899aa';
+      pctx.font = '12px sans-serif';
+      pctx.textAlign = 'center';
+      pctx.fillText('加载参考图中...', pw / 2, ph / 2);
+      // Will retry when thumb source loads
+    }
+  }
+
+  /* ── Image handling ── */
+
+  async function loadDefaultImage() {
+    if (!thumbSourceImg) return;
+    state.sourceImage = thumbSourceImg;
+    state.sourceFileName = '参考图';
+    fitCanvas();
+    if (state.currentLut) {
+      cacheValid = false;
+      renderPreview();
+    }
   }
 
   els.imageInput.addEventListener('change', async (e) => {
@@ -265,20 +355,12 @@
     try {
       await loadImageFile(file);
     } catch (err) {
-      console.error('[App] 图片加载失败:', err);
       setStatus('图片加载失败');
     }
   });
 
-  els.container.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    els.container.style.outline = '2px dashed var(--accent)';
-  });
-
-  els.container.addEventListener('dragleave', () => {
-    els.container.style.outline = '';
-  });
-
+  els.container.addEventListener('dragover', (e) => { e.preventDefault(); els.container.style.outline = '2px dashed var(--accent)'; });
+  els.container.addEventListener('dragleave', () => { els.container.style.outline = ''; });
   els.container.addEventListener('drop', async (e) => {
     e.preventDefault();
     els.container.style.outline = '';
@@ -286,215 +368,45 @@
     if (file) await loadImageFile(file);
   });
 
-  els.toggleCompareBtn.addEventListener('click', () => {
-    state.compareMode = !state.compareMode;
-    els.toggleCompareBtn.textContent = state.compareMode ? '退出对比' : '对比模式';
-    renderPreview();
-  });
-
-  els.fitViewBtn.addEventListener('click', () => {
-    fitCanvas();
-    renderPreview();
-  });
-
-  els.exportBtn.addEventListener('click', exportImage);
-
-  els.intensitySlider.addEventListener('input', () => {
-    state.lutIntensity = parseInt(els.intensitySlider.value);
-    els.intensityValue.textContent = `${state.lutIntensity}%`;
-    renderPreview();
-  });
-
-  els.dualLutBtn.addEventListener('click', () => {
-    state.dualLut = !state.dualLut;
-    els.dualLutBtn.textContent = state.dualLut ? '关双LUT' : '双 LUT';
-    els.dualLutControls.style.display = state.dualLut ? 'inline-flex' : 'none';
-    if (state.dualLut && state.luts.length > 1 && state.lutBIndex < 0) {
-      state.lutBIndex = state.luts[0] === state.luts[state.currentLutIndex >= 0 ? state.currentLutIndex : 0] ? 1 : 0;
-      els.lutBSelect.value = state.lutBIndex;
-    }
-    if (state.dualLut && state.lutBIndex >= 0) populateLutBSelect();
-    cacheValid = false;
-    renderPreview();
-  });
-
-  els.blendSlider.addEventListener('input', () => {
-    state.lutBlend = parseInt(els.blendSlider.value);
-    els.blendValue.textContent = `${state.lutBlend}%`;
-    renderPreview();
-  });
-
-  els.lutBSelect.addEventListener('change', () => {
-    state.lutBIndex = parseInt(els.lutBSelect.value);
-    cacheValid = false;
-    renderPreview();
-  });
-
-  const isElectron = !!window.electronAPI;
-  const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
-
-  els.loadLutDirBtn.addEventListener('click', async () => {
-    if (isElectron) {
-      const dirPath = await window.electronAPI.selectLutDir();
-      if (!dirPath) return;
-      setStatus('正在扫描 LUT 文件...');
-      const lutFiles = await window.electronAPI.scanLutDir(dirPath);
-      if (lutFiles.length === 0) {
-        setStatus('该目录未找到 LUT 文件');
-        return;
-      }
-      setStatus(`正在加载 ${lutFiles.length} 个 LUT...`);
-      await loadLutFilesElectron(lutFiles);
-      await window.electronAPI.saveLutDir(dirPath);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.webkitdirectory = true;
-      input.accept = '.vlt,.cube';
-      input.addEventListener('change', async (e) => {
-        const files = Array.from(e.target.files).filter(f => {
-          const ext = f.name.split('.').pop().toLowerCase();
-          return ext === 'vlt' || ext === 'cube';
-        });
-        if (files.length === 0) {
-          setStatus('未找到 LUT 文件');
-          return;
-        }
-        setStatus(`正在加载 ${files.length} 个 LUT...`);
-        await loadLutFiles(files);
-      });
-      input.click();
-    }
-  });
-
-  els.sortFavBtn.addEventListener('click', () => {
-    state.sortFav = !state.sortFav;
-    els.sortFavBtn.style.color = state.sortFav ? '#ffd700' : '';
-    renderLutList();
-  });
-
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      fitCanvas();
-      renderPreview();
-    }, 150);
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      selectLut(state.currentLutIndex + 1);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      selectLut(state.currentLutIndex - 1);
-    } else if ((e.key === 'f' || e.key === 'F') && state.currentLutIndex >= 0) {
-      toggleFavorite(state.luts[state.currentLutIndex].name);
-    }
-  });
-
-  /* ── Split line drag ── */
-
-  els.canvas.addEventListener('mousedown', (e) => {
-    if (!state.compareMode) return;
-    const rect = els.canvas.getBoundingClientRect();
-    const scaleX = els.canvas.width / rect.width;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const splitX = els.canvas.width * state.splitRatio;
-    if (Math.abs(mx - splitX) < 8) {
-      state.dragging = true;
-      els.canvas.style.cursor = 'ew-resize';
-    }
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    if (!state.dragging) return;
-    const rect = els.canvas.getBoundingClientRect();
-    const scaleX = els.canvas.width / rect.width;
-    const mx = (e.clientX - rect.left) * scaleX;
-    state.splitRatio = Math.max(0.05, Math.min(0.95, mx / els.canvas.width));
-    renderPreview();
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (state.dragging) {
-      state.dragging = false;
-      els.canvas.style.cursor = '';
-    }
-  });
-
-  els.canvas.addEventListener('mouseleave', () => {
-    if (state.dragging) {
-      state.dragging = false;
-      els.canvas.style.cursor = '';
-    }
-  });
-
-  /* ── Image loading ── */
-
   async function loadImageFile(file) {
     const ext = file.name.split('.').pop().toLowerCase();
-    if (isRawFile(ext)) {
-      if (!isElectron) {
-        setStatus('RAW 格式仅限桌面版支持');
-        return;
-      }
-      setStatus(`正在解析 RAW: ${file.name}...`);
+    if (RAW_EXTS.includes(ext)) {
+      if (!isElectron) { setStatus('RAW 仅限桌面版'); return; }
+      setStatus('正在解析 RAW...');
       const result = await window.electronAPI.extractRawPreview(file.path);
-      if (!result) {
-        setStatus('无法提取 RAW 内嵌预览图');
-        return;
-      }
+      if (!result) { setStatus('无法提取 RAW 预览'); return; }
       const byteChars = atob(result.data);
       const bytes = new Uint8Array(byteChars.length);
       for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
       const blob = new Blob([bytes], { type: 'image/jpeg' });
       const blobUrl = URL.createObjectURL(blob);
       const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = blobUrl;
-      });
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = blobUrl; });
       state.sourceImage = img;
       state.sourceFileName = file.name.replace(/\.[^.]+$/, '');
       URL.revokeObjectURL(blobUrl);
       fitCanvas();
+      cacheValid = false;
       renderPreview();
-      setStatus(`RAW 预览: ${file.name}`);
+      setStatus(`RAW: ${file.name}`);
       return;
     }
-    await loadImage(file);
-  }
-
-  async function loadImage(file) {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = () => reject(new Error('图片解码失败'));
-      img.src = url;
-    });
-    if (!img.width || !img.height) {
-      URL.revokeObjectURL(url);
-      throw new Error('图片尺寸无效');
-    }
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(); img.src = url; });
     state.sourceImage = img;
     state.sourceFileName = file.name.replace(/\.[^.]+$/, '');
     fitCanvas();
+    cacheValid = false;
     renderPreview();
-    setStatus(`${file.name}`);
+    setStatus(file.name);
     URL.revokeObjectURL(url);
   }
 
   function fitCanvas() {
     if (!state.sourceImage) return;
     const rect = els.container.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      console.warn('[App] 容器尺寸无效，延迟渲染');
-      setTimeout(fitCanvas, 50);
-      return;
-    }
+    if (rect.width <= 0 || rect.height <= 0) { setTimeout(fitCanvas, 50); return; }
     const pad = 20;
     const maxW = Math.max(rect.width - pad, 100);
     const maxH = Math.max(rect.height - pad, 100);
@@ -507,17 +419,12 @@
     origCache.height = els.canvas.height;
     lutCache.width = els.canvas.width;
     lutCache.height = els.canvas.height;
-    lutBCache.width = els.canvas.width;
-    lutBCache.height = els.canvas.height;
-    blendCache.width = els.canvas.width;
-    blendCache.height = els.canvas.height;
     els.canvas.style.display = 'block';
     els.placeholder.style.display = 'none';
     cacheValid = false;
-    console.log(`[App] 画布: ${els.canvas.width}x${els.canvas.height}, 容器: ${rect.width}x${rect.height}, 图片: ${state.sourceImage.width}x${state.sourceImage.height}`);
   }
 
-  /* ── Cache rebuild (only when LUT/image changes) ── */
+  /* ── Rendering ── */
 
   function renderLutToCanvas(canvas, ctx, lut) {
     let ok = false;
@@ -541,62 +448,28 @@
   }
 
   function rebuildCache() {
-    if (!state.sourceImage) return;
-    const lutA = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
-    const lutB = state.dualLut && state.lutBIndex >= 0 ? state.luts[state.lutBIndex] : null;
-    const w = els.canvas.width;
-    const h = els.canvas.height;
+    if (!state.sourceImage || !state.currentLut) return;
+    const w = els.canvas.width, h = els.canvas.height;
     if (w === 0 || h === 0) return;
-
     origCtx.clearRect(0, 0, w, h);
     origCtx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
-
-    if (lutA) {
-      renderLutToCanvas(lutCache, lutCtx, lutA);
-    } else {
-      lutCtx.clearRect(0, 0, w, h);
-    }
-
-    if (lutB && lutB !== lutA) {
-      renderLutToCanvas(lutBCache, lutBCtx, lutB);
-    } else {
-      lutBCtx.clearRect(0, 0, w, h);
-    }
-
+    renderLutToCanvas(lutCache, lutCtx, state.currentLut);
     cacheValid = true;
   }
 
-  /* ── Preview rendering (uses caches for fast blitting) ── */
-
   function renderPreview() {
-    if (!state.sourceImage) return;
-    const w = els.canvas.width;
-    const h = els.canvas.height;
+    if (!state.sourceImage || !state.currentLut) return;
+    const w = els.canvas.width, h = els.canvas.height;
     if (w === 0 || h === 0) return;
-
     try {
       if (!cacheValid) rebuildCache();
-
       const intensityAlpha = state.lutIntensity / 100;
-      const hasLutB = state.dualLut && state.lutBIndex >= 0 && state.lutBIndex !== state.currentLutIndex;
-
       ctx.clearRect(0, 0, w, h);
-
       if (state.compareMode) {
-        const splitX = Math.round(w * state.splitRatio);
-        ctx.drawImage(origCache, 0, 0, w, h);
-        if (hasLutB) {
-          blendCtx.clearRect(0, 0, w, h);
-          blendCtx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
-          blendCtx.globalAlpha = state.lutBlend / 100;
-          blendCtx.drawImage(lutBCache, 0, 0, splitX, h, 0, 0, splitX, h);
-          blendCtx.globalAlpha = 1;
-          ctx.globalAlpha = intensityAlpha;
-          ctx.drawImage(blendCache, 0, 0, splitX, h, 0, 0, splitX, h);
-        } else {
-          ctx.globalAlpha = intensityAlpha;
-          ctx.drawImage(lutCache, 0, 0, splitX, h, 0, 0, splitX, h);
-        }
+        const splitX = Math.round(w * 0.5);
+        ctx.drawImage(origCache, 0, 0, splitX, h, 0, 0, splitX, h);
+        ctx.globalAlpha = intensityAlpha;
+        ctx.drawImage(lutCache, 0, 0, w, h);
         ctx.globalAlpha = 1;
         ctx.save();
         ctx.strokeStyle = '#e94560';
@@ -607,10 +480,6 @@
         ctx.lineTo(splitX, h);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = '#e94560';
-        ctx.beginPath();
-        ctx.arc(splitX, h / 2, 6, 0, Math.PI * 2);
-        ctx.fill();
         ctx.fillStyle = 'rgba(233,69,96,0.85)';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
@@ -619,49 +488,83 @@
         ctx.restore();
       } else {
         ctx.drawImage(origCache, 0, 0, w, h);
-        if (hasLutB) {
-          blendCtx.clearRect(0, 0, w, h);
-          blendCtx.drawImage(lutCache, 0, 0, w, h);
-          blendCtx.globalAlpha = state.lutBlend / 100;
-          blendCtx.drawImage(lutBCache, 0, 0, w, h);
-          blendCtx.globalAlpha = 1;
-          ctx.globalAlpha = intensityAlpha;
-          ctx.drawImage(blendCache, 0, 0, w, h);
-        } else {
-          ctx.globalAlpha = intensityAlpha;
-          ctx.drawImage(lutCache, 0, 0, w, h);
-        }
+        ctx.globalAlpha = intensityAlpha;
+        ctx.drawImage(lutCache, 0, 0, w, h);
         ctx.globalAlpha = 1;
       }
     } catch (err) {
       console.error('[App] 渲染错误:', err);
     }
-
-    updateInfoBar();
     updateButtons();
   }
 
-  function populateLutBSelect() {
-    const sel = els.lutBSelect;
-    sel.innerHTML = '<option value="-1">LUT B（无）</option>' +
-      state.luts.map((l, i) =>
-        `<option value="${i}"${i === state.lutBIndex ? ' selected' : ''}>${escHtml(l.name)}</option>`
-      ).join('');
-  }
+  /* ── Events ── */
+
+  els.toggleCompareBtn.addEventListener('click', () => {
+    state.compareMode = !state.compareMode;
+    els.toggleCompareBtn.textContent = state.compareMode ? '退出对比' : '对比模式';
+    renderPreview();
+  });
+
+  els.fitViewBtn.addEventListener('click', () => {
+    fitCanvas();
+    renderPreview();
+  });
+
+  els.intensitySlider.addEventListener('input', () => {
+    state.lutIntensity = parseInt(els.intensitySlider.value);
+    els.intensityValue.textContent = `${state.lutIntensity}%`;
+    renderPreview();
+  });
+
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { fitCanvas(); renderPreview(); }, 150);
+  });
+
+  els.canvas.addEventListener('mousedown', (e) => {
+    if (!state.compareMode) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const scaleX = els.canvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const splitX = els.canvas.width * 0.5;
+    if (Math.abs(mx - splitX) < 8) {
+      state.dragging = true;
+      els.canvas.style.cursor = 'ew-resize';
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!state.dragging) return;
+    const rect = els.canvas.getBoundingClientRect();
+    const scaleX = els.canvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (state.dragging) { state.dragging = false; els.canvas.style.cursor = ''; }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      // Navigate tree items
+      const items = els.folderTree.querySelectorAll('.tree-item[data-path]');
+      const activeIdx = Array.from(items).findIndex(el => el.classList.contains('active'));
+      let next = e.key === 'ArrowDown' ? activeIdx + 1 : activeIdx - 1;
+      if (next >= 0 && next < items.length) {
+        items[next].click();
+        items[next].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  });
 
   /* ── Export ── */
 
-  async function exportImage() {
-    const lutA = state.currentLutIndex >= 0 ? state.luts[state.currentLutIndex] : null;
-    if (!state.sourceImage || !lutA) return;
-
-    const lutB = state.dualLut && state.lutBIndex >= 0 && state.lutBIndex !== state.currentLutIndex
-      ? state.luts[state.lutBIndex] : null;
-
+  els.exportBtn.addEventListener('click', async () => {
+    if (!state.sourceImage || !state.currentLut) return;
     const fmt = els.exportFormat.value;
     const mimeType = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
     const ext = fmt === 'jpg' ? 'jpg' : 'png';
-
     const w = state.sourceImage.naturalWidth || state.sourceImage.width;
     const h = state.sourceImage.naturalHeight || state.sourceImage.height;
     setStatus('正在导出...');
@@ -672,48 +575,18 @@
     const exportCtx = exportCanvas.getContext('2d');
     exportCtx.drawImage(state.sourceImage, 0, 0, w, h);
 
-    const tmpA = document.createElement('canvas');
-    tmpA.width = w; tmpA.height = h;
-    const tmpACtx = tmpA.getContext('2d');
-    renderLutToCanvas(tmpA, tmpACtx, lutA);
-
-    if (lutB) {
-      const tmpB = document.createElement('canvas');
-      tmpB.width = w; tmpB.height = h;
-      const tmpBCtx = tmpB.getContext('2d');
-      renderLutToCanvas(tmpB, tmpBCtx, lutB);
-      exportCtx.clearRect(0, 0, w, h);
-      exportCtx.drawImage(tmpA, 0, 0);
-      exportCtx.globalAlpha = state.lutBlend / 100;
-      exportCtx.drawImage(tmpB, 0, 0);
-      exportCtx.globalAlpha = 1;
-    } else {
-      exportCtx.clearRect(0, 0, w, h);
-      exportCtx.drawImage(tmpA, 0, 0);
-    }
-
-    const intensityAlpha = state.lutIntensity / 100;
-    if (intensityAlpha < 1) {
-      const origFull = document.createElement('canvas');
-      origFull.width = w; origFull.height = h;
-      const origFullCtx = origFull.getContext('2d');
-      origFullCtx.drawImage(state.sourceImage, 0, 0, w, h);
-      exportCtx.globalAlpha = intensityAlpha;
-      exportCtx.drawImage(exportCanvas, 0, 0);
-      exportCtx.globalAlpha = 1;
-    }
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const tmpCtx = tmp.getContext('2d');
+    renderLutToCanvas(tmp, tmpCtx, state.currentLut);
+    exportCtx.clearRect(0, 0, w, h);
+    exportCtx.drawImage(tmp, 0, 0);
 
     const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, mimeType));
-
-    if (!blob) {
-      setStatus('导出失败');
-      return;
-    }
+    if (!blob) { setStatus('导出失败'); return; }
 
     const baseName = state.sourceFileName || 'export';
-    const lutName = lutB
-      ? `${lutA.name.replace(/\.[^.]+$/, '')}_${lutB.name.replace(/\.[^.]+$/, '')}`
-      : lutA.name.replace(/\.[^.]+$/, '');
+    const lutName = state.currentLut.name.replace(/\.[^.]+$/, '');
     const defaultName = `${baseName}_${lutName}.${ext}`;
 
     if (isElectron) {
@@ -724,8 +597,8 @@
           dataBase64: base64,
           defaultName,
           filters: fmt === 'jpg'
-            ? [{ name: 'JPEG 图片', extensions: ['jpg', 'jpeg'] }]
-            : [{ name: 'PNG 图片', extensions: ['png'] }],
+            ? [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }]
+            : [{ name: 'PNG', extensions: ['png'] }],
         });
         setStatus(path ? `已导出: ${path}` : '导出取消');
       };
@@ -739,213 +612,63 @@
       URL.revokeObjectURL(url);
       setStatus('导出完成');
     }
-  }
+  });
 
-  /* ── LUT loading ── */
+  /* ── Splitters ── */
 
-  async function loadLutFiles(files) {
-    state.luts = [];
-    state.currentLutIndex = -1;
+  (function initSplitters() {
+    // Left splitter
+    const splitter = document.getElementById('splitter');
+    const sidebar = document.getElementById('sidebar');
+    let drag = false, dragRight = false;
+    const rightSplitter = document.getElementById('splitterRight');
+    const infoPanel = document.getElementById('infoPanel');
 
-    for (const file of files) {
-      try {
-        const lut = await LUTParser.parseLUT(file);
-        state.luts.push(lut);
-      } catch (err) {
-        console.warn(`加载失败: ${file.name}`, err);
-      }
-    }
-    // batch generate thumbnails
-    for (const lut of state.luts) {
-      lut.thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
-    }
-
-    state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
-    renderLutList();
-    populateLutBSelect();
-    selectLut(-1);
-    els.lutCount.textContent = `${state.luts.length} 个 LUT`;
-    updateButtons();
-  }
-
-  async function loadLutFilesElectron(lutFileEntries) {
-    state.luts = [];
-    state.currentLutIndex = -1;
-
-    for (const entry of lutFileEntries) {
-      try {
-        const text = await window.electronAPI.readLutFile(entry.path);
-        if (!text) continue;
-        const lut = LUTParser.parseLUTFromText(entry.name, text);
-        state.luts.push(lut);
-      } catch (err) {
-        console.warn(`加载失败: ${entry.name}`, err);
-      }
-    }
-    for (const lut of state.luts) {
-      lut.thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
-    }
-
-    state.luts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN-u-kf-upper'));
-    renderLutList();
-    populateLutBSelect();
-    selectLut(-1);
-    els.lutCount.textContent = `${state.luts.length} 个 LUT`;
-    updateButtons();
-  }
-
-  if (isElectron) {
-    window.electronAPI.onAutoLoadLuts(async (dirPath) => {
-      setStatus('正在自动加载 LUT...');
-      const lutFiles = await window.electronAPI.scanLutDir(dirPath);
-      if (lutFiles.length > 0) {
-        setStatus(`正在加载 ${lutFiles.length} 个 LUT...`);
-        await loadLutFilesElectron(lutFiles);
-        setStatus(`已加载 ${lutFiles.length} 个 LUT`);
-      }
-    });
-    window.electronAPI.onMenuSelectLutDir(async (dirPath) => {
-      setStatus('正在扫描 LUT 文件...');
-      const lutFiles = await window.electronAPI.scanLutDir(dirPath);
-      if (lutFiles.length === 0) {
-        setStatus('该目录未找到 LUT 文件');
-        return;
-      }
-      setStatus(`正在加载 ${lutFiles.length} 个 LUT...`);
-      await loadLutFilesElectron(lutFiles);
-      await window.electronAPI.saveLutDir(dirPath);
-    });
-  }
-
-  /* ── LUT list ── */
-
-  function renderLutList() {
-    const keyword = els.lutSearch.value.trim().toLowerCase();
-    let filtered = state.luts;
-
-    if (keyword) {
-      filtered = filtered.filter(l => l.name.toLowerCase().includes(keyword));
-    }
-
-    if (state.sortFav) {
-      filtered = [...filtered].sort((a, b) => {
-        const af = state.favorites.includes(a.name) ? 0 : 1;
-        const bf = state.favorites.includes(b.name) ? 0 : 1;
-        return af - bf;
-      });
-    }
-
-    const origActive = state.currentLutIndex === -1;
-    let html = `<div class="lut-item ${origActive ? 'active' : ''}" data-index="-1">
-      <div class="lut-thumb" style="display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text-secondary)">⊘</div>
-      <div class="lut-info">
-        <span class="lut-name">原图</span>
-        <span class="lut-meta">原始图像</span>
-      </div>
-    </div>`;
-
-    if (filtered.length > 0) {
-      html += filtered.map((lut) => {
-        const realIdx = state.luts.indexOf(lut);
-        const isActive = realIdx === state.currentLutIndex;
-        const isFav = state.favorites.includes(lut.name);
-        return `<div class="lut-item ${isActive ? 'active' : ''}" data-index="${realIdx}">
-          <div class="lut-thumb"></div>
-          <div class="lut-info">
-            <span class="lut-name">${escHtml(lut.name)}</span>
-            <span class="lut-meta">${lut.size}³  ${lut.type}</span>
-          </div>
-          <button class="favorite-btn ${isFav ? 'active' : ''}" data-lutname="${lut.name}">${isFav ? '★' : '☆'}</button>
-        </div>`;
-      }).join('');
-    } else if (!keyword) {
-      html += `<div class="empty-state"><p>尚未加载 LUT</p></div>`;
-    }
-
-    els.lutList.innerHTML = html;
-
-    els.lutList.querySelectorAll('.lut-item').forEach(el => {
-      const idx = parseInt(el.dataset.index, 10);
-      const thumbDiv = el.querySelector('.lut-thumb');
-      if (idx >= 0 && thumbDiv && state.luts[idx]) {
-        if (state.luts[idx].thumb) {
-          const img = document.createElement('img');
-          img.src = state.luts[idx].thumb.toDataURL();
-          img.style.width = '100%';
-          img.style.height = '100%';
-          thumbDiv.appendChild(img);
-        } else {
-          thumbDiv.textContent = '?';
-          thumbDiv.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:14px;color:#e94560';
-        }
-      }
-      el.addEventListener('click', () => selectLut(idx));
+    splitter.addEventListener('mousedown', (e) => {
+      drag = true;
+      splitter.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
     });
 
-    els.lutList.querySelectorAll('.favorite-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleFavorite(btn.dataset.lutname);
-      });
+    rightSplitter.addEventListener('mousedown', (e) => {
+      dragRight = true;
+      rightSplitter.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
     });
-  }
 
-  /* ── Selection ── */
-
-  function selectLut(index) {
-    if (index < -1 || index >= state.luts.length) return;
-    state.currentLutIndex = index;
-    cacheValid = false;
-    renderLutList();
-    renderPreview();
-    const el = els.lutList.querySelector(`.lut-item[data-index="${index}"]`);
-    if (el) {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-  }
-
-  /* ── Favorites ── */
-
-  function toggleFavorite(name) {
-    const idx = state.favorites.indexOf(name);
-    if (idx >= 0) {
-      state.favorites.splice(idx, 1);
-    } else {
-      state.favorites.push(name);
-    }
-    localStorage.setItem('lutFavorites', JSON.stringify(state.favorites));
-    renderLutList();
-  }
-
-  /* ── Info bar ── */
-
-  function updateInfoBar() {
-    const hasLutB = state.dualLut && state.lutBIndex >= 0 && state.lutBIndex !== state.currentLutIndex;
-    if (state.currentLutIndex >= 0) {
-      const lut = state.luts[state.currentLutIndex];
-      if (hasLutB) {
-        const lutB = state.luts[state.lutBIndex];
-        els.lutInfoName.textContent = `${lut.name} + ${lutB.name}`;
-        els.lutInfoMeta.textContent = `混合 ${state.lutBlend}%  ●  强度 ${state.lutIntensity}%`;
-      } else {
-        els.lutInfoName.textContent = lut.name;
-        const engine = useWebgl ? 'WebGL' : 'CPU';
-        els.lutInfoMeta.textContent = `${lut.size}³  ${lut.type.toUpperCase()}  ${engine}  ●  ${state.currentLutIndex + 1} / ${state.luts.length}`;
+    document.addEventListener('mousemove', (e) => {
+      if (drag) {
+        const rect = sidebar.parentElement.getBoundingClientRect();
+        let w = e.clientX - rect.left;
+        w = Math.max(160, Math.min(w, rect.width * 0.5));
+        sidebar.style.width = w + 'px';
       }
-      els.infoBar.style.display = 'flex';
-    } else if (state.currentLutIndex === -1 && state.sourceImage) {
-      els.lutInfoName.textContent = '原图';
-      els.lutInfoMeta.textContent = '原始图像，无 LUT';
-      els.infoBar.style.display = 'flex';
-    } else {
-      els.infoBar.style.display = 'none';
-    }
-  }
+      if (dragRight) {
+        const rect = infoPanel.parentElement.getBoundingClientRect();
+        let w = rect.right - e.clientX;
+        w = Math.max(200, Math.min(w, rect.width * 0.4));
+        infoPanel.style.width = w + 'px';
+      }
+    });
 
-  /* ── Buttons state ── */
+    document.addEventListener('mouseup', () => {
+      if (drag) { drag = false; splitter.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
+      if (dragRight) { dragRight = false; rightSplitter.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
+    });
+  })();
+
+  /* ── Utils ── */
+
+  function setStatus(msg) {
+    els.statusText.textContent = msg;
+  }
 
   function updateButtons() {
-    const hasLut = state.luts.length > 0;
+    const hasLut = !!state.currentLut;
     const hasImage = !!state.sourceImage;
     els.toggleCompareBtn.disabled = !(hasLut && hasImage);
     els.fitViewBtn.disabled = !hasImage;
@@ -953,380 +676,12 @@
     els.exportBtn.disabled = !canExport;
     els.exportFormat.disabled = !canExport;
     els.intensitySlider.disabled = !(hasLut && hasImage);
-    els.dualLutBtn.disabled = !(hasLut && hasImage);
-    const dualActive = state.dualLut && hasLut && hasImage;
-    els.dualLutControls.style.display = dualActive ? 'inline-flex' : 'none';
-    els.lutBSelect.disabled = !dualActive;
-    els.blendSlider.disabled = !dualActive;
   }
 
-  /* ── Status ── */
-
-  function setStatus(msg) {
-    els.statusText.textContent = msg;
-  }
-
-  /* ── Repo (folder-based, like Obsidian) ── */
-
-  if (isElectron) {
-    els.browseTabBtn = document.getElementById('browseTabBtn');
-    els.repoTabBtn = document.getElementById('repoTabBtn');
-    els.browseTab = document.getElementById('browseTab');
-    els.repoTab = document.getElementById('repoTab');
-    els.repoSelectDirBtn = document.getElementById('repoSelectDirBtn');
-    els.repoTitle = document.getElementById('repoTitle');
-    els.repoBreadcrumb = document.getElementById('repoBreadcrumb');
-    els.repoContent = document.getElementById('repoContent');
-    els.repoActions = document.getElementById('repoActions');
-    els.repoImportBtn = document.getElementById('repoImportBtn');
-    els.repoNewFolderBtn = document.getElementById('repoNewFolderBtn');
-    els.repoThumbSizeSlider = document.getElementById('repoThumbSizeSlider');
-    els.repoThumbSizeLabel = document.getElementById('repoThumbSizeLabel');
-    els.repoSetThumbBtn = document.getElementById('repoSetThumbBtn');
-    els.repoEditModal = document.getElementById('repoEditModal');
-    els.editModalTitle = document.getElementById('editModalTitle');
-    els.editModalClose = document.getElementById('editModalClose');
-    els.editNote = document.getElementById('editNote');
-    els.editDeleteBtn = document.getElementById('editDeleteBtn');
-    els.editCancelBtn = document.getElementById('editCancelBtn');
-    els.editSaveBtn = document.getElementById('editSaveBtn');
-    els.editRating = document.getElementById('editRating');
-
-    let activeTab = 'browse';
-    let repoCurrentPath = '';  // relative path inside repo
-    let repoMeta = {};
-
-    function switchTab(tab) {
-      activeTab = tab;
-      els.browseTabBtn.classList.toggle('active', tab === 'browse');
-      els.repoTabBtn.classList.toggle('active', tab === 'repo');
-      els.browseTab.style.display = tab === 'browse' ? '' : 'none';
-      els.repoTab.style.display = tab === 'repo' ? '' : 'none';
-      if (tab === 'repo') loadRepoView();
+  // Auto-load default image on startup
+  setTimeout(async () => {
+    if (thumbSourceImg) {
+      await loadDefaultImage();
     }
-
-    els.browseTabBtn.addEventListener('click', () => switchTab('browse'));
-    els.repoTabBtn.addEventListener('click', () => switchTab('repo'));
-
-    async function loadRepoView() {
-      const dir = await window.electronAPI.repoGetDir();
-      if (!dir) {
-        els.repoTitle.textContent = 'LUT 仓库（未设置）';
-        els.repoBreadcrumb.innerHTML = '';
-        els.repoContent.innerHTML = '<div class="empty-state"><p>请先点击上方「选择仓库」按钮<br/>选择一个文件夹作为 LUT 仓库</p></div>';
-        els.repoActions.style.display = 'none';
-        return;
-      }
-      els.repoActions.style.display = '';
-      els.repoTitle.textContent = `仓库: ${dir.split(/[/\\]/).pop()}`;
-      els.repoContent.style.setProperty('--repo-thumb-size', state.repoThumbSize + 'px');
-      els.repoThumbSizeSlider.value = state.repoThumbSize;
-      els.repoThumbSizeLabel.textContent = state.repoThumbSize;
-      repoMeta = await window.electronAPI.repoLoadMeta();
-      const result = await window.electronAPI.repoScan(repoCurrentPath);
-      try {
-        state.repoOrder = await window.electronAPI.repoLoadOrder();
-      } catch (e) {
-        state.repoOrder = null;
-      }
-      renderBreadcrumb();
-      renderRepoContent(result);
-    }
-
-    function renderBreadcrumb() {
-      const parts = repoCurrentPath ? repoCurrentPath.split(/[/\\]/) : [];
-      let html = '<span data-path="">仓库根目录</span>';
-      let acc = '';
-      parts.forEach((p, i) => {
-        acc = acc ? `${acc}/${p}` : p;
-        html += `<span class="sep">›</span><span data-path="${acc}">${escHtml(p)}</span>`;
-      });
-      els.repoBreadcrumb.innerHTML = html;
-      els.repoBreadcrumb.querySelectorAll('span[data-path]').forEach(el => {
-        el.addEventListener('click', () => {
-          repoCurrentPath = el.dataset.path;
-          loadRepoView();
-        });
-      });
-    }
-
-    function renderRepoContent(result) {
-      if (result.folders.length === 0 && result.files.length === 0) {
-        els.repoContent.innerHTML = '<div class="empty-state"><p>此文件夹为空<br/>点击「＋导入」添加 LUT</p></div>';
-        return;
-      }
-      let html = '';
-      result.folders.forEach(f => {
-        html += `<div class="repo-item repo-item-folder" draggable="false" data-type="folder" data-path="${f.relativePath}">
-          <div class="repo-item-icon">📁</div>
-          <div class="repo-item-name">${escHtml(f.name)}</div>
-        </div>`;
-      });
-      // apply custom order if available
-      let sortedFiles = [...result.files];
-      if (state.repoOrder && Array.isArray(state.repoOrder)) {
-        const orderMap = new Map(state.repoOrder.map((p, i) => [p, i]));
-        sortedFiles.sort((a, b) => {
-          const ai = orderMap.get(a.relativePath);
-          const bi = orderMap.get(b.relativePath);
-          if (ai !== undefined && bi !== undefined) return ai - bi;
-          if (ai !== undefined) return -1;
-          if (bi !== undefined) return 1;
-          return a.name.localeCompare(b.name, 'zh-CN-u-kf-upper');
-        });
-      }
-      sortedFiles.forEach(f => {
-        const meta = repoMeta[f.relativePath] || {};
-        const stars = meta.rating ? '★'.repeat(meta.rating) + '☆'.repeat(5 - meta.rating) : '';
-        const isActive = state.luts.some(l => l._repoRelPath === f.relativePath);
-        html += `<div class="repo-item ${isActive ? 'active' : ''}" draggable="true" data-type="file" data-path="${f.relativePath}">
-          <div class="repo-item-thumb"></div>
-          <div class="repo-item-name">${escHtml(f.name.replace(/\.[^.]+$/, ''))}</div>
-          ${meta.rating ? `<div class="repo-item-rating">${stars}</div>` : ''}
-        </div>`;
-      });
-      els.repoContent.innerHTML = html;
-
-      els.repoContent.querySelectorAll('[data-type="folder"]').forEach(el => {
-        el.addEventListener('click', () => {
-          repoCurrentPath = el.dataset.path;
-          loadRepoView();
-        });
-        el.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          const act = prompt('操作: 输入新名称重命名，留空删除文件夹');
-          if (act === null) return;
-          if (act.trim()) {
-            window.electronAPI.repoRename(el.dataset.path, act.trim()).then(() => loadRepoView());
-          } else {
-            if (confirm('确定删除此文件夹及其中所有文件？')) {
-              window.electronAPI.repoDelete(el.dataset.path).then(() => loadRepoView());
-            }
-          }
-        });
-      });
-
-      els.repoContent.querySelectorAll('[data-type="file"]').forEach(async (el) => {
-        const path = el.dataset.path;
-        const meta = repoMeta[path] || {};
-        const thumbDiv = el.querySelector('.repo-item-thumb');
-        const cached = state.luts.find(l => l._repoRelPath === path);
-        if (cached?.thumb) {
-          const img = document.createElement('img');
-          img.src = cached.thumb.toDataURL();
-          img.style.width = '100%';
-          img.style.height = '100%';
-          thumbDiv.appendChild(img);
-        } else if (isElectron) {
-          // lazy generate thumbnail
-          const content = await window.electronAPI.repoReadFile(path);
-          if (content) {
-            const name = path.split(/[/\\]/).pop();
-            const lut = LUTParser.parseLUTFromText(name, content);
-            const thumb = await generateThumbnail(lut).catch(() => generateThumbnailSync(lut));
-            if (thumbDiv) {
-              const img = document.createElement('img');
-              img.src = thumb.toDataURL();
-              img.style.width = '100%';
-              img.style.height = '100%';
-              thumbDiv.appendChild(img);
-            }
-          }
-        }
-        el.addEventListener('click', () => applyRepoFile(path));
-        el.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          openFileMenu(path);
-        });
-        // drag & drop reorder
-        el.addEventListener('dragstart', (e) => {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', el.dataset.path);
-          el.classList.add('dragging');
-        });
-        el.addEventListener('dragend', () => {
-          el.classList.remove('dragging');
-          els.repoContent.querySelectorAll('.repo-item').forEach(i => i.classList.remove('drag-target'));
-        });
-        el.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          els.repoContent.querySelectorAll('.repo-item').forEach(i => i.classList.remove('drag-target'));
-          el.classList.add('drag-target');
-        });
-        el.addEventListener('dragleave', () => {
-          el.classList.remove('drag-target');
-        });
-        el.addEventListener('drop', async (e) => {
-          e.preventDefault();
-          els.repoContent.querySelectorAll('.repo-item').forEach(i => i.classList.remove('drag-target', 'dragging'));
-          const fromPath = e.dataTransfer.getData('text/plain');
-          const toPath = el.dataset.path;
-          if (!fromPath || fromPath === toPath) return;
-          const items = els.repoContent.querySelectorAll('[data-type="file"]');
-          const order = Array.from(items).map(i => i.dataset.path);
-          const fromIdx = order.indexOf(fromPath);
-          const toIdx = order.indexOf(toPath);
-          if (fromIdx < 0 || toIdx < 0) return;
-          order.splice(fromIdx, 1);
-          order.splice(toIdx, 0, fromPath);
-          state.repoOrder = order;
-          window.electronAPI.repoSaveOrder(order);
-          // re-render to reflect new order
-          loadRepoView();
-        });
-      });
-    }
-
-    async function applyRepoFile(relPath) {
-      const content = await window.electronAPI.repoReadFile(relPath);
-      if (!content) return;
-      const name = relPath.split(/[/\\]/).pop();
-      const parsed = LUTParser.parseLUTFromText(name, content);
-      parsed._repoRelPath = relPath;
-      const thumb = await generateThumbnail(parsed).catch(() => generateThumbnailSync(parsed));
-      parsed.thumb = thumb;
-      let existing = state.luts.findIndex(l => l._repoRelPath === relPath);
-      if (existing < 0) {
-        existing = state.luts.findIndex(l => l.name === parsed.name && !l._repoRelPath);
-      }
-      if (existing >= 0) {
-        state.luts[existing]._repoRelPath = relPath;
-        state.luts[existing].thumb = thumb;
-        state.currentLutIndex = existing;
-      } else {
-        state.luts.unshift(parsed);
-        state.currentLutIndex = 0;
-      }
-      cacheValid = false;
-      renderLutList();
-      populateLutBSelect();
-      renderPreview();
-      loadRepoView();
-    }
-
-    function openFileMenu(relPath) {
-      const meta = repoMeta[relPath] || {};
-      els.editModalTitle.textContent = `属性: ${relPath.split(/[/\\]/).pop()}`;
-      els.editNote.value = meta.note || '';
-      updateStarUI(meta.rating || 0);
-      els.repoEditModal.style.display = 'flex';
-
-      const saveHandler = async () => {
-        const rating = els.editRating.querySelectorAll('.star.active').length;
-        repoMeta[relPath] = {
-          rating,
-          note: els.editNote.value.trim(),
-        };
-        await window.electronAPI.repoSaveMeta(repoMeta);
-        els.repoEditModal.style.display = 'none';
-        loadRepoView();
-      };
-
-      const deleteHandler = async () => {
-        if (confirm(`确定删除 ${relPath}？`)) {
-          await window.electronAPI.repoDelete(relPath);
-          const idx = state.luts.findIndex(l => l._repoRelPath === relPath);
-          if (idx >= 0) {
-            state.luts.splice(idx, 1);
-            if (state.currentLutIndex >= state.luts.length) state.currentLutIndex = state.luts.length - 1;
-            if (state.currentLutIndex === idx) state.currentLutIndex = -1;
-            cacheValid = false;
-            renderLutList();
-            populateLutBSelect();
-            renderPreview();
-          }
-          els.repoEditModal.style.display = 'none';
-          loadRepoView();
-        }
-      };
-
-      els.editSaveBtn.onclick = saveHandler;
-      els.editDeleteBtn.onclick = deleteHandler;
-    }
-
-    function updateStarUI(val) {
-      els.editRating.querySelectorAll('.star').forEach(el => {
-        const v = parseInt(el.dataset.val, 10);
-        el.textContent = v <= val ? '★' : '☆';
-        el.classList.toggle('active', v <= val);
-      });
-    }
-
-    els.editRating.addEventListener('click', (e) => {
-      const star = e.target.closest('.star');
-      if (!star) return;
-      const val = parseInt(star.dataset.val, 10);
-      updateStarUI(val);
-    });
-
-    els.editCancelBtn.addEventListener('click', () => {
-      els.repoEditModal.style.display = 'none';
-    });
-    els.editModalClose.addEventListener('click', () => {
-      els.repoEditModal.style.display = 'none';
-    });
-
-    els.repoSelectDirBtn.addEventListener('click', async () => {
-      const dir = await window.electronAPI.repoSelectDir();
-      if (dir) {
-        repoCurrentPath = '';
-        loadRepoView();
-      }
-    });
-
-    els.repoImportBtn.addEventListener('click', async () => {
-      const count = await window.electronAPI.repoImportFiles();
-      if (count > 0) {
-        setStatus(`已导入 ${count} 个 LUT`);
-        loadRepoView();
-      } else {
-        setStatus('未导入任何 LUT');
-      }
-    });
-
-    els.repoNewFolderBtn.addEventListener('click', async () => {
-      const name = prompt('文件夹名称:');
-      if (name && name.trim()) {
-        const target = repoCurrentPath ? `${repoCurrentPath}/${name.trim()}` : name.trim();
-        const ok = await window.electronAPI.repoCreateFolder(target);
-        if (ok) loadRepoView();
-      }
-    });
-
-    els.repoThumbSizeSlider.addEventListener('input', () => {
-      state.repoThumbSize = parseInt(els.repoThumbSizeSlider.value, 10);
-      els.repoThumbSizeLabel.textContent = state.repoThumbSize;
-      els.repoContent.style.setProperty('--repo-thumb-size', state.repoThumbSize + 'px');
-    });
-
-    els.repoSetThumbBtn.addEventListener('click', async () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.orf,.raf,.dng';
-      input.addEventListener('change', async () => {
-        const file = input.files[0];
-        if (!file) return;
-        if (window.electronAPI) {
-          const result = await window.electronAPI.thumbSetSource(file.path);
-          if (result) {
-            await initThumbSource();
-            setStatus('缩略图源已更新');
-          }
-        }
-      });
-      input.click();
-    });
-
-    // Initial load if repo dir already set
-    loadRepoView();
-  }
-
-  /* ── Helpers ── */
-
-  function escHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-  }
+  }, 500);
 })();

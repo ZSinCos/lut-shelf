@@ -11,56 +11,29 @@
     <header>
       <h1>LUT 预览工具</h1>
       <div class="header-actions">
-        <span class="lut-count" id="lutCount">未加载 LUT</span>
-        <button id="loadLutDirBtn" class="btn btn-primary" title="选择 LUT 文件夹">📂 加载 LUT</button>
+        <button id="loadDirBtn" class="btn btn-primary" title="选择 LUT 文件夹">📂 选择目录</button>
+        <span class="header-path" id="headerPath"></span>
       </div>
     </header>
 
     <main class="main-layout">
-      <aside class="lut-sidebar" id="lutSidebar">
-        <div class="sidebar-tabs">
-          <button id="browseTabBtn" class="sidebar-tab active">浏览</button>
-          <button id="repoTabBtn" class="sidebar-tab">仓库</button>
-        </div>
-        <div id="browseTab" class="sidebar-tab-content">
-          <div class="sidebar-header">
-            <div class="sidebar-title-row">
-              <h2>LUT 列表</h2>
-              <button id="sortFavBtn" class="btn-icon" title="按收藏排序">★</button>
-            </div>
-            <input type="text" id="lutSearch" placeholder="搜索 LUT..." />
-          </div>
-          <div id="lutList" class="lut-list">
-            <div class="empty-state">
-              <p>点击上方「加载 LUT」<br/>选择 LUT 文件夹</p>
-            </div>
+      <!-- 左侧：文件夹树 -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-title-row">
+            <h2>LUT 文件夹</h2>
           </div>
         </div>
-        <div id="repoTab" class="sidebar-tab-content" style="display:none">
-          <div class="sidebar-header">
-            <div class="sidebar-title-row">
-              <h2 id="repoTitle">LUT 仓库</h2>
-              <button id="repoSelectDirBtn" class="btn btn-small" title="选择仓库文件夹">📂 选择仓库</button>
-            </div>
-            <div id="repoBreadcrumb" class="repo-breadcrumb"></div>
-          </div>
-          <div id="repoContent" class="repo-content">
-            <div class="empty-state" id="repoEmpty">
-              <p>请先选择仓库文件夹</p>
-            </div>
-          </div>
-          <div class="repo-actions" id="repoActions" style="display:none">
-            <button id="repoImportBtn" class="btn btn-small">＋导入</button>
-            <button id="repoNewFolderBtn" class="btn btn-small">＋新建文件夹</button>
-            <div class="repo-thumb-size-group">
-              <input type="range" id="repoThumbSizeSlider" min="60" max="200" value="90" class="repo-thumb-slider" />
-              <span id="repoThumbSizeLabel" class="repo-thumb-size-label">90</span>
-            </div>
-            <button id="repoSetThumbBtn" class="btn btn-small">📷 缩略图源</button>
+        <div id="folderTree" class="folder-tree">
+          <div class="empty-state">
+            <p>点击上方「选择目录」</p>
           </div>
         </div>
       </aside>
+
       <div class="splitter" id="splitter"></div>
+
+      <!-- 中间：预览 -->
       <section class="preview-area">
         <div class="toolbar">
           <label class="btn">
@@ -68,18 +41,6 @@
             <input type="file" id="imageInput" accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.orf,.raf,.dng,.pef,.srw,.x3f" hidden />
           </label>
           <button id="toggleCompareBtn" class="btn" disabled>对比模式</button>
-          <button id="dualLutBtn" class="btn" disabled>双 LUT</button>
-          <div class="dual-lut-controls" id="dualLutControls" style="display:none">
-            <select id="lutBSelect" class="btn lut-b-select" disabled>
-              <option value="-1">LUT B（无）</option>
-            </select>
-            <div class="blend-group">
-              <label for="blendSlider" class="intensity-label">混合</label>
-              <input type="range" id="blendSlider" min="0" max="100" value="50" class="intensity-slider" disabled />
-              <span id="blendValue" class="intensity-value">50%</span>
-            </div>
-          </div>
-          <button id="fitViewBtn" class="btn" disabled>适应视图</button>
           <div class="intensity-group">
             <label for="intensitySlider" class="intensity-label">强度</label>
             <input type="range" id="intensitySlider" min="0" max="100" value="100" class="intensity-slider" disabled />
@@ -92,52 +53,60 @@
               <option value="jpg">JPG</option>
             </select>
           </div>
+          <button id="fitViewBtn" class="btn" disabled>适应视图</button>
           <span id="statusText" class="status-text"></span>
         </div>
         <div class="canvas-container" id="canvasContainer">
           <canvas id="previewCanvas"></canvas>
           <div class="placeholder" id="placeholder">
             <div class="placeholder-icon">🖼️</div>
-            <p>拖入图片或点击「上传图片」开始预览</p>
-            <p class="placeholder-sub">支持 JPG / PNG / WebP / RAW（桌面版）</p>
+            <p>选择 LUT 后自动预览效果</p>
+            <p class="placeholder-sub">拖入图片或点击「上传图片」更换参考图</p>
           </div>
-        </div>
-        <div class="info-bar" id="infoBar" style="display:none">
-          <span id="lutInfoName"></span>
-          <span id="lutInfoMeta"></span>
         </div>
       </section>
-    </main>
-  </div>
 
-  <div id="repoEditModal" class="modal-overlay" style="display:none">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="editModalTitle">LUT 属性</h3>
-        <button id="editModalClose" class="btn-icon">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-row">
-          <label>评分</label>
-          <div class="star-rating" id="editRating">
-            <span class="star" data-val="1">☆</span>
-            <span class="star" data-val="2">☆</span>
-            <span class="star" data-val="3">☆</span>
-            <span class="star" data-val="4">☆</span>
-            <span class="star" data-val="5">☆</span>
+      <!-- 右侧：LUT 信息 -->
+      <div class="splitter splitter-right" id="splitterRight" style="display:none"></div>
+
+      <aside class="info-panel" id="infoPanel" style="width:0;overflow:hidden">
+        <div class="info-empty" id="infoEmpty">
+          <p>选择一个 LUT 文件查看详情</p>
+        </div>
+        <div class="info-content" id="infoContent" style="display:none">
+          <div class="info-preview" id="infoPreview">
+            <div class="info-preview-label">效果预览</div>
+            <canvas id="infoPreviewCanvas"></canvas>
+          </div>
+          <div class="info-details">
+            <div class="info-row">
+              <span class="info-label">名称</span>
+              <span class="info-value" id="infoName"></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">作者</span>
+              <span class="info-value" id="infoAuthor"></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">说明</span>
+              <span class="info-value info-desc" id="infoDesc"></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">格式</span>
+              <span class="info-value" id="infoFormat"></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">尺寸</span>
+              <span class="info-value" id="infoSize"></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">路径</span>
+              <span class="info-value info-path" id="infoPath"></span>
+            </div>
           </div>
         </div>
-        <div class="form-row">
-          <label>备注</label>
-          <textarea id="editNote" class="form-input form-textarea" rows="3"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button id="editDeleteBtn" class="btn btn-danger">删除文件</button>
-        <button id="editCancelBtn" class="btn">取消</button>
-        <button id="editSaveBtn" class="btn btn-primary">保存</button>
-      </div>
-    </div>
+      </aside>
+    </main>
   </div>
 
   <script src="js/lut-parser.js"></script>

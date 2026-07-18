@@ -167,6 +167,15 @@ app.on('activate', () => {
 
 /* ── IPC handlers ── */
 
+ipcMain.handle('select-dir', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: '选择 LUT 文件夹',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
 ipcMain.handle('select-lut-dir', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
@@ -561,5 +570,51 @@ ipcMain.handle('thumb-cache-put', async (event, { key, dataBase64 }) => {
   } catch (e) {
     console.error('缓存缩略图失败:', e);
     return false;
+  }
+});
+
+/* ── Folder tree scan (recursive) ── */
+
+const LUT_EXTS = new Set(['.vlt', '.cube', '.3dl', '.csp']);
+
+function scanTreeSync(dirPath) {
+  const result = { folders: [], files: [] };
+  let entries;
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch (e) {
+    return result;
+  }
+  entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      const sub = scanTreeSync(full);
+      if (sub.folders.length > 0 || sub.files.length > 0) {
+        result.folders.push({ name: entry.name, children: sub });
+      }
+    } else if (entry.isFile() && LUT_EXTS.has(path.extname(entry.name).toLowerCase())) {
+      const stats = fs.statSync(full);
+      result.files.push({
+        name: entry.name,
+        path: full,
+        size: stats.size,
+        mtime: stats.mtimeMs,
+      });
+    }
+  }
+  return result;
+}
+
+ipcMain.handle('scan-tree', async (event, dirPath) => {
+  return scanTreeSync(dirPath);
+});
+
+ipcMain.handle('read-file', async (event, filePath) => {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (e) {
+    return null;
   }
 });
