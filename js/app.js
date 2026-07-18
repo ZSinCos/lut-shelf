@@ -62,10 +62,6 @@
     zoomResetBtn: document.getElementById('zoomResetBtn'),
     zoomControl: document.getElementById('zoomControl'),
     previewCanvasWrap: document.getElementById('previewCanvasWrap'),
-    settingsBtn: document.getElementById('settingsBtn'),
-    settingsOverlay: document.getElementById('settingsOverlay'),
-    settingsCloseBtn: document.getElementById('settingsCloseBtn'),
-    shelfModeRadios: document.querySelectorAll('input[name="shelfMode"]'),
     tagList: document.getElementById('tagList'),
     addTagBtn: document.getElementById('addTagBtn'),
     infoTags: document.getElementById('infoTags'),
@@ -329,19 +325,15 @@
   function renderShelf(files) {
     const grid = els.shelfGrid;
     pagination.files = files;
+    pagination.page = 0;
+    pagination.pageSize = calcPageSize();
+    pagination.totalPages = Math.max(1, Math.ceil(files.length / pagination.pageSize));
     if (files.length === 0) {
       grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
       els.shelfPagination.style.display = 'none';
       return;
     }
-    if (state.useInfiniteScroll) {
-      renderInfinite(files);
-    } else {
-      pagination.page = 0;
-      pagination.pageSize = calcPageSize();
-      pagination.totalPages = Math.max(1, Math.ceil(files.length / pagination.pageSize));
-      renderPage();
-    }
+    renderPage();
   }
 
   function renderPage() {
@@ -393,7 +385,7 @@
   });
 
   els.shelfGrid.addEventListener('wheel', (e) => {
-    if (state.useInfiniteScroll || pagination.totalPages <= 1) return;
+    if (pagination.totalPages <= 1) return;
     if (e.deltaMode === 0) {
       wheelAccum += e.deltaY;
     } else {
@@ -417,11 +409,7 @@
   if (window.ResizeObserver) {
     gridResizeObs = new ResizeObserver(() => {
       if (!pagination.files.length || searchActive) return;
-      if (state.useInfiniteScroll) {
-        recalcInfiniteBatchSize();
-      } else if (recalcPagination()) {
-        renderPage();
-      }
+      if (recalcPagination()) renderPage();
     });
     setTimeout(() => {
       if (els.shelfGrid) gridResizeObs.observe(els.shelfGrid);
@@ -503,9 +491,6 @@
 
     infiniteLoaded = end;
 
-    if (infiniteLoaded >= files.length && infiniteSentinel) {
-      infiniteSentinel.style.display = 'none';
-    }
   }
 
   function extname(name) {
@@ -1126,42 +1111,6 @@
       els.previewCanvas.style.cursor = z > 1 ? 'grab' : '';
     }
   });
-
-  /* ── Settings ── */
-
-  state.useInfiniteScroll = localStorage.getItem('lutShelfMode') === 'infinite';
-
-  function applyShelfMode() {
-    const mode = state.useInfiniteScroll ? 'infinite' : 'pagination';
-    localStorage.setItem('lutShelfMode', mode);
-    for (const radio of els.shelfModeRadios) {
-      radio.checked = radio.value === mode;
-    }
-    if (pagination.files.length) renderShelf(pagination.files);
-  }
-
-  els.settingsBtn.addEventListener('click', () => {
-    applyShelfMode(); // sync radios
-    els.settingsOverlay.style.display = 'flex';
-  });
-
-  els.settingsCloseBtn.addEventListener('click', () => {
-    els.settingsOverlay.style.display = 'none';
-  });
-
-  els.settingsOverlay.addEventListener('click', (e) => {
-    if (e.target === els.settingsOverlay) els.settingsOverlay.style.display = 'none';
-  });
-
-  for (const radio of els.shelfModeRadios) {
-    radio.addEventListener('change', () => {
-      if (!radio.checked) return;
-      state.useInfiniteScroll = radio.value === 'infinite';
-      applyShelfMode();
-    });
-  }
-
-  applyShelfMode();
 
   /* ── Image handling ── */
 
