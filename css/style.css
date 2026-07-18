@@ -159,6 +159,8 @@ header h1 {
 }
 
 .sidebar-header {
+  display: flex;
+  align-items: center;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -170,6 +172,35 @@ header h1 {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 1px;
+  flex: 1;
+}
+
+.tree-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.btn-tiny {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+
+.btn-tiny:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+}
 }
 
 .folder-tree {

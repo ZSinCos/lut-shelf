@@ -55,6 +55,8 @@
     favCount: document.getElementById('favCount'),
     favBtn: document.getElementById('favBtn'),
     clearImageBtn: document.getElementById('clearImageBtn'),
+    expandAllBtn: document.getElementById('expandAllBtn'),
+    collapseAllBtn: document.getElementById('collapseAllBtn'),
   };
   let noteSaveTimer = null;
 
@@ -704,6 +706,29 @@
     els.favBtn.textContent = isFav ? ' 已收藏' : ' 收藏';
     refreshFavCount();
   });
+
+  /* ── Tree expand/collapse ── */
+
+  function expandAllTree() {
+    els.folderTree.querySelectorAll('.tree-children').forEach(el => {
+      el.classList.add('open');
+    });
+    els.folderTree.querySelectorAll('.tree-toggle').forEach(el => {
+      if (el.style.visibility !== 'hidden') el.classList.add('expanded');
+    });
+  }
+
+  function collapseAllTree() {
+    els.folderTree.querySelectorAll('.tree-children').forEach(el => {
+      el.classList.remove('open');
+    });
+    els.folderTree.querySelectorAll('.tree-toggle').forEach(el => {
+      el.classList.remove('expanded');
+    });
+  }
+
+  els.expandAllBtn.addEventListener('click', expandAllTree);
+  els.collapseAllBtn.addEventListener('click', collapseAllTree);
 
   /* ── Preview Overlay ── */
 
