@@ -11,7 +11,7 @@
     lutIntensity: 100,
     compareMode: false,
     previewActive: false,
-    splitXRatio: 0.5,
+    splitXRatio: parseFloat(localStorage.getItem('splitXRatio')) || 0.5,
     dragging: false,
   };
 
@@ -1351,7 +1351,11 @@
   });
 
   document.addEventListener('mouseup', () => {
-    if (state.dragging) { state.dragging = false; els.previewCanvas.style.cursor = ''; }
+    if (state.dragging) {
+      state.dragging = false;
+      els.previewCanvas.style.cursor = '';
+      localStorage.setItem('splitXRatio', state.splitXRatio);
+    }
   });
 
   /* ── Export ── */
@@ -1452,8 +1456,11 @@
 
     document.addEventListener('mouseup', () => {
       if (drag) { drag = false; splitterLeft.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
-      if (dragRight) { dragRight = false; splitterRight.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
+      if (dragRight) { dragRight = false; splitterRight.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; localStorage.setItem('infoPanelWidth', infoPanel.style.width); }
     });
+
+    const savedWidth = localStorage.getItem('infoPanelWidth');
+    if (savedWidth) infoPanel.style.width = savedWidth;
   })();
 
   /* ── Utils ── */
