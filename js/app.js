@@ -11,7 +11,7 @@
     lutIntensity: 100,
     compareMode: false,
     previewActive: false,
-    splitXRatio: parseFloat(localStorage.getItem('splitXRatio')) || 0.5,
+    splitXRatio: 0.5,
     dragging: false,
   };
 
@@ -1351,11 +1351,7 @@
   });
 
   document.addEventListener('mouseup', () => {
-    if (state.dragging) {
-      state.dragging = false;
-      els.previewCanvas.style.cursor = '';
-      localStorage.setItem('splitXRatio', state.splitXRatio);
-    }
+    if (state.dragging) { state.dragging = false; els.previewCanvas.style.cursor = ''; }
   });
 
   /* ── Export ── */
