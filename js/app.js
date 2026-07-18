@@ -2,29 +2,26 @@
   const state = {
     rootPath: null,
     treeData: null,
+    currentFolderPath: null,
+    currentFolderFiles: [],
     currentLutPath: null,
     currentLut: null,
     sourceImage: null,
     sourceFileName: '',
     lutIntensity: 100,
     compareMode: false,
+    previewActive: false,
   };
 
   const els = {
-    canvas: document.getElementById('previewCanvas'),
-    container: document.getElementById('canvasContainer'),
-    placeholder: document.getElementById('placeholder'),
-    folderTree: document.getElementById('folderTree'),
-    imageInput: document.getElementById('imageInput'),
     loadDirBtn: document.getElementById('loadDirBtn'),
     headerPath: document.getElementById('headerPath'),
-    toggleCompareBtn: document.getElementById('toggleCompareBtn'),
-    fitViewBtn: document.getElementById('fitViewBtn'),
-    exportBtn: document.getElementById('exportBtn'),
-    exportFormat: document.getElementById('exportFormat'),
-    intensitySlider: document.getElementById('intensitySlider'),
-    intensityValue: document.getElementById('intensityValue'),
-    statusText: document.getElementById('statusText'),
+    headerCount: document.getElementById('headerCount'),
+    folderTree: document.getElementById('folderTree'),
+    shelfGrid: document.getElementById('shelfGrid'),
+    shelfTitle: document.getElementById('shelfTitle'),
+    shelfSearch: document.getElementById('shelfSearch'),
+    infoPanel: document.getElementById('infoPanel'),
     infoEmpty: document.getElementById('infoEmpty'),
     infoContent: document.getElementById('infoContent'),
     infoName: document.getElementById('infoName'),
@@ -34,12 +31,25 @@
     infoSize: document.getElementById('infoSize'),
     infoPath: document.getElementById('infoPath'),
     infoPreviewCanvas: document.getElementById('infoPreviewCanvas'),
+    previewFromInfoBtn: document.getElementById('previewFromInfoBtn'),
+    previewOverlay: document.getElementById('previewOverlay'),
+    previewBackBtn: document.getElementById('previewBackBtn'),
+    previewCanvas: document.getElementById('previewCanvas'),
+    imageInput: document.getElementById('imageInput'),
+    toggleCompareBtn: document.getElementById('toggleCompareBtn'),
+    intensitySlider: document.getElementById('intensitySlider'),
+    intensityValue: document.getElementById('intensityValue'),
+    exportBtn: document.getElementById('exportBtn'),
+    exportFormat: document.getElementById('exportFormat'),
+    statusText: document.getElementById('statusText'),
+    headerStatus: document.getElementById('headerStatus'),
+    placeholder: document.querySelector('.preview-canvas-wrap .placeholder'),
   };
 
   const isElectron = !!window.electronAPI;
   const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
 
-  let ctx = els.canvas.getContext('2d');
+  let ctx = els.previewCanvas.getContext('2d');
   let origCache = document.createElement('canvas');
   let origCtx = origCache.getContext('2d');
   let lutCache = document.createElement('canvas');
@@ -61,7 +71,6 @@
   /* ── Thumb source ── */
 
   let thumbSourceImg = null;
-  const THUMB_SIZE = 64;
 
   async function initThumbSource() {
     if (!isElectron) return;
@@ -140,31 +149,45 @@
     const tree = await window.electronAPI.scanTree(dir);
     state.treeData = tree;
     renderTree();
-    setStatus(`已加载 ${countFiles(tree)} 个 LUT`);
+    const count = countAllFiles(tree);
+    els.headerCount.textContent = `${count} 个 LUT`;
+    setStatus(`已加载 ${count} 个 LUT`);
   });
 
-  function countFiles(node) {
+  function countAllFiles(node) {
     let n = node.files.length;
-    for (const f of node.folders) n += countFiles(f.children);
+    for (const f of node.folders) n += countAllFiles(f.children);
     return n;
+  }
+
+  function getAllLutFiles(node, basePath) {
+    const files = [];
+    const prefix = basePath ? basePath + '\\' : '';
+    for (const f of node.files) {
+      files.push(f);
+    }
+    for (const f of node.folders) {
+      files.push(...getAllLutFiles(f.children, prefix + f.name));
+    }
+    return files;
   }
 
   function renderTree() {
     els.folderTree.innerHTML = '';
     if (!state.treeData) {
-      els.folderTree.innerHTML = '<div class="empty-state"><p>点击上方「选择目录」</p></div>';
+      els.folderTree.innerHTML = '<div class="empty-state"><p>点击「选择目录」</p></div>';
       return;
     }
-    const ul = document.createElement('div');
-    renderTreeNodes(state.treeData, '', ul);
-    els.folderTree.appendChild(ul);
+    const container = document.createElement('div');
+    renderTreeNodes(state.treeData, container, 0);
+    els.folderTree.appendChild(container);
   }
 
-  function renderTreeNodes(node, prefix, container) {
+  function renderTreeNodes(node, container, depth) {
     for (const f of node.folders) {
       const item = document.createElement('div');
       item.className = 'tree-item';
-      item.style.paddingLeft = (prefix ? 8 : 0) + 'px';
+      item.style.paddingLeft = (12 + depth * 14) + 'px';
 
       const toggle = document.createElement('span');
       toggle.className = 'tree-toggle';
@@ -184,57 +207,162 @@
       const childrenDiv = document.createElement('div');
       childrenDiv.className = 'tree-children';
 
+      const hasLuts = getAllLutFiles(f.children, f.name).length > 0;
+      if (!hasLuts) {
+        toggle.style.visibility = 'hidden';
+      }
+
       item.addEventListener('click', (e) => {
         e.stopPropagation();
+        selectFolder(f, f.name);
         const isOpen = childrenDiv.classList.toggle('open');
         toggle.classList.toggle('expanded', isOpen);
       });
 
       container.appendChild(item);
       container.appendChild(childrenDiv);
-      renderTreeNodes(f.children, prefix + '  ', childrenDiv);
+      renderTreeNodes(f.children, childrenDiv, depth + 1);
+    }
+  }
+
+  function selectFolder(folderNode, folderPath) {
+    els.folderTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
+    const lutFiles = getAllLutFiles(folderNode.children, folderPath);
+    state.currentFolderPath = folderPath;
+    state.currentFolderFiles = lutFiles;
+    els.shelfTitle.textContent = folderPath;
+    renderShelf(lutFiles);
+    els.shelfSearch.value = '';
+  }
+
+  /* ── Bookshelf Grid ── */
+
+  let shelfObserver = null;
+
+  function renderShelf(files) {
+    const grid = els.shelfGrid;
+    grid.innerHTML = '';
+    els.infoPanel.classList.remove('open');
+    els.infoContent.style.display = 'none';
+    els.infoEmpty.style.display = 'block';
+    document.getElementById('splitterRight').style.display = 'none';
+
+    if (files.length === 0) {
+      grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
+      return;
     }
 
-    for (const f of node.files) {
-      const item = document.createElement('div');
-      item.className = 'tree-item';
-      item.style.paddingLeft = (prefix ? 20 : 0) + 'px';
-      item.dataset.path = f.path;
+    if (shelfObserver) shelfObserver.disconnect();
+    shelfObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const card = entry.target;
+          const path = card.dataset.path;
+          if (!card.dataset.thumbLoaded) {
+            card.dataset.thumbLoaded = '1';
+            generateThumbForCard(card, path);
+          }
+          shelfObserver.unobserve(card);
+        }
+      }
+    }, { rootMargin: '200px' });
 
-      const toggle = document.createElement('span');
-      toggle.className = 'tree-toggle';
-      toggle.style.visibility = 'hidden';
-      toggle.textContent = '▶';
-      item.appendChild(toggle);
+    for (const f of files) {
+      const card = document.createElement('div');
+      card.className = 'shelf-card';
+      card.dataset.path = f.path;
 
-      const icon = document.createElement('span');
-      icon.className = 'tree-icon';
-      icon.textContent = '📄';
-      item.appendChild(icon);
+      const thumbDiv = document.createElement('div');
+      thumbDiv.className = 'shelf-card-thumb';
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = 144;
+      thumbCanvas.height = 81;
+      thumbDiv.appendChild(thumbCanvas);
+      card.appendChild(thumbDiv);
 
-      const label = document.createElement('span');
-      label.className = 'tree-label';
-      label.textContent = f.name;
-      item.appendChild(label);
+      const infoDiv = document.createElement('div');
+      infoDiv.className = 'shelf-card-info';
 
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'shelf-card-name';
+      nameDiv.textContent = f.name;
+      infoDiv.appendChild(nameDiv);
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'shelf-card-meta';
+      metaDiv.textContent = extname(f.name).toLowerCase().slice(1);
+      infoDiv.appendChild(metaDiv);
+
+      card.appendChild(infoDiv);
+
+      card.addEventListener('click', () => {
+        els.shelfGrid.querySelectorAll('.shelf-card.active').forEach(el => el.classList.remove('active'));
+        card.classList.add('active');
         selectLutFile(f);
       });
 
-      container.appendChild(item);
+      card.addEventListener('dblclick', () => {
+        selectLutFile(f).then(() => openPreview());
+      });
+
+      grid.appendChild(card);
+      shelfObserver.observe(card);
     }
   }
+
+  function extname(name) {
+    const i = name.lastIndexOf('.');
+    return i >= 0 ? name.slice(i) : '';
+  }
+  function basename(p) {
+    const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+    return i >= 0 ? p.slice(i + 1) : p;
+  }
+
+  async function generateThumbForCard(card, filePath) {
+    const thumbCanvas = card.querySelector('.shelf-card-thumb canvas');
+    if (!thumbCanvas) return;
+    const w = thumbCanvas.width, h = thumbCanvas.height;
+
+    try {
+      if (thumbSourceImg) {
+        const s = thumbSourceImg;
+        const scale = Math.max(w / s.width, h / s.height);
+        const sw = s.width * scale, sh = s.height * scale;
+        const sx = (sw - w) / 2, sy = (sh - h) / 2;
+        const cx = thumbCanvas.getContext('2d');
+        cx.drawImage(s, 0, 0, s.width, s.height, -sx, -sy, sw, sh);
+        const imgData = cx.getImageData(0, 0, w, h);
+
+        try {
+          const content = await window.electronAPI.readFile(filePath);
+          if (content) {
+            const lut = LUTParser.parseLUTFromText(basename(filePath), content);
+            LUTApply.applyLUT(imgData, lut);
+          }
+        } catch (e) {}
+
+        cx.putImageData(imgData, 0, 0);
+      }
+    } catch (e) {}
+  }
+
+  /* ── Search ── */
+
+  els.shelfSearch.addEventListener('input', () => {
+    const q = els.shelfSearch.value.toLowerCase();
+    const cards = els.shelfGrid.querySelectorAll('.shelf-card');
+    for (const card of cards) {
+      const name = card.querySelector('.shelf-card-name').textContent.toLowerCase();
+      card.style.display = name.includes(q) ? '' : 'none';
+    }
+  });
 
   /* ── Select LUT ── */
 
   async function selectLutFile(fileInfo) {
-    // Deselect all
-    els.folderTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
-    const item = els.folderTree.querySelector(`[data-path="${fileInfo.path}"]`);
-    if (item) item.classList.add('active');
-
     state.currentLutPath = fileInfo.path;
+    state.currentLut = null;
 
     const content = await window.electronAPI.readFile(fileInfo.path);
     if (!content) { setStatus('读取失败'); return; }
@@ -243,26 +371,20 @@
     state.currentLut = lut;
 
     setStatus(`已加载: ${fileInfo.name}`);
-
-    // Show info panel
     showInfo(lut, fileInfo);
 
-    // Render preview on main canvas if we have an image
     if (state.sourceImage) {
       cacheValid = false;
       renderPreview();
-    } else {
-      // Auto-load reference image for preview
-      await loadDefaultImage();
     }
   }
 
   /* ── Info panel ── */
 
   function guessAuthor(lutPath, lutName) {
+    if (!state.rootPath) return '';
     const rel = lutPath.replace(state.rootPath, '');
     const parts = rel.split(/[/\\]/).filter(Boolean);
-    // Look for author hints: folder name patterns like "ejay xxx", "波子Booz xxx", "Plady Chan xxx"
     for (const p of parts) {
       const known = ['ejay', '波子', 'booz', 'plady', '林馆长', '凉子', 'forrest'];
       for (const k of known) {
@@ -272,12 +394,12 @@
     return '';
   }
 
-  function guessDescription(lutPath, lutName) {
+  function guessDescription(lutPath) {
+    if (!state.rootPath) return '';
     const rel = lutPath.replace(state.rootPath, '');
     const parts = rel.split(/[/\\]/).filter(Boolean);
     const clues = [];
     for (const p of parts) {
-      // Extract meaningful descriptions from folder names
       if (p.includes('胶片')) clues.push('胶片风格');
       if (p.includes('日系')) clues.push('日系风格');
       if (p.includes('电影')) clues.push('电影感');
@@ -303,19 +425,16 @@
   function showInfo(lut, fileInfo) {
     els.infoEmpty.style.display = 'none';
     els.infoContent.style.display = 'block';
-    const panel = document.getElementById('infoPanel');
-    panel.style.width = '';
-    panel.style.overflow = '';
+    els.infoPanel.classList.add('open');
     document.getElementById('splitterRight').style.display = '';
 
     els.infoName.textContent = lut.name;
     els.infoAuthor.textContent = guessAuthor(fileInfo.path, lut.name) || '未知';
-    els.infoDesc.textContent = guessDescription(fileInfo.path, lut.name) || '无说明';
+    els.infoDesc.textContent = guessDescription(fileInfo.path) || '无说明';
     els.infoFormat.textContent = lut.type.toUpperCase();
     els.infoSize.textContent = `${lut.size}³`;
     els.infoPath.textContent = fileInfo.path;
 
-    // Generate preview image
     const pw = els.infoPreviewCanvas.width = 320;
     const ph = els.infoPreviewCanvas.height = 180;
     const pctx = els.infoPreviewCanvas.getContext('2d');
@@ -332,8 +451,27 @@
       pctx.font = '12px sans-serif';
       pctx.textAlign = 'center';
       pctx.fillText('加载参考图中...', pw / 2, ph / 2);
-      // Will retry when thumb source loads
     }
+  }
+
+  /* ── Preview Overlay ── */
+
+  els.previewFromInfoBtn.addEventListener('click', openPreview);
+
+  els.previewBackBtn.addEventListener('click', closePreview);
+
+  function openPreview() {
+    if (!state.currentLut) return;
+    els.previewOverlay.style.display = 'flex';
+    state.previewActive = true;
+    if (!state.sourceImage) {
+      loadDefaultImage();
+    }
+  }
+
+  function closePreview() {
+    els.previewOverlay.style.display = 'none';
+    state.previewActive = false;
   }
 
   /* ── Image handling ── */
@@ -359,11 +497,12 @@
     }
   });
 
-  els.container.addEventListener('dragover', (e) => { e.preventDefault(); els.container.style.outline = '2px dashed var(--accent)'; });
-  els.container.addEventListener('dragleave', () => { els.container.style.outline = ''; });
-  els.container.addEventListener('drop', async (e) => {
+  const canvasWrap = els.previewCanvas.parentElement;
+  canvasWrap.addEventListener('dragover', (e) => { e.preventDefault(); canvasWrap.style.outline = '2px dashed var(--accent)'; });
+  canvasWrap.addEventListener('dragleave', () => { canvasWrap.style.outline = ''; });
+  canvasWrap.addEventListener('drop', async (e) => {
     e.preventDefault();
-    els.container.style.outline = '';
+    canvasWrap.style.outline = '';
     const file = Array.from(e.dataTransfer.files)[0];
     if (file) await loadImageFile(file);
   });
@@ -405,7 +544,7 @@
 
   function fitCanvas() {
     if (!state.sourceImage) return;
-    const rect = els.container.getBoundingClientRect();
+    const rect = canvasWrap.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) { setTimeout(fitCanvas, 50); return; }
     const pad = 20;
     const maxW = Math.max(rect.width - pad, 100);
@@ -413,20 +552,20 @@
     const scale = Math.min(maxW / state.sourceImage.width, maxH / state.sourceImage.height, 1);
     const w = Math.floor(state.sourceImage.width * scale);
     const h = Math.floor(state.sourceImage.height * scale);
-    els.canvas.width = Math.max(w, 1);
-    els.canvas.height = Math.max(h, 1);
-    origCache.width = els.canvas.width;
-    origCache.height = els.canvas.height;
-    lutCache.width = els.canvas.width;
-    lutCache.height = els.canvas.height;
-    els.canvas.style.display = 'block';
+    els.previewCanvas.width = Math.max(w, 1);
+    els.previewCanvas.height = Math.max(h, 1);
+    origCache.width = els.previewCanvas.width;
+    origCache.height = els.previewCanvas.height;
+    lutCache.width = els.previewCanvas.width;
+    lutCache.height = els.previewCanvas.height;
+    els.previewCanvas.style.display = 'block';
     els.placeholder.style.display = 'none';
     cacheValid = false;
   }
 
   /* ── Rendering ── */
 
-  function renderLutToCanvas(canvas, ctx, lut) {
+  function renderLutToCanvas(canvas, ctxt, lut) {
     let ok = false;
     if (useWebgl && webgl) {
       webgl.resize(canvas.width, canvas.height);
@@ -434,22 +573,22 @@
       webgl.uploadLUT(lut);
       ok = webgl.render(canvas.width, canvas.height, false);
       if (ok) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(webglCanvas, 0, 0);
+        ctxt.clearRect(0, 0, canvas.width, canvas.height);
+        ctxt.drawImage(webglCanvas, 0, 0);
       }
     }
     if (!ok) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      ctxt.clearRect(0, 0, canvas.width, canvas.height);
+      ctxt.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, canvas.width, canvas.height);
+      const imageData = ctxt.getImageData(0, 0, canvas.width, canvas.height);
       LUTApply.applyLUT(imageData, lut);
-      ctx.putImageData(imageData, 0, 0);
+      ctxt.putImageData(imageData, 0, 0);
     }
   }
 
   function rebuildCache() {
     if (!state.sourceImage || !state.currentLut) return;
-    const w = els.canvas.width, h = els.canvas.height;
+    const w = els.previewCanvas.width, h = els.previewCanvas.height;
     if (w === 0 || h === 0) return;
     origCtx.clearRect(0, 0, w, h);
     origCtx.drawImage(state.sourceImage, 0, 0, state.sourceImage.width, state.sourceImage.height, 0, 0, w, h);
@@ -459,7 +598,7 @@
 
   function renderPreview() {
     if (!state.sourceImage || !state.currentLut) return;
-    const w = els.canvas.width, h = els.canvas.height;
+    const w = els.previewCanvas.width, h = els.previewCanvas.height;
     if (w === 0 || h === 0) return;
     try {
       if (!cacheValid) rebuildCache();
@@ -506,11 +645,6 @@
     renderPreview();
   });
 
-  els.fitViewBtn.addEventListener('click', () => {
-    fitCanvas();
-    renderPreview();
-  });
-
   els.intensitySlider.addEventListener('input', () => {
     state.lutIntensity = parseInt(els.intensitySlider.value);
     els.intensityValue.textContent = `${state.lutIntensity}%`;
@@ -519,43 +653,7 @@
 
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { fitCanvas(); renderPreview(); }, 150);
-  });
-
-  els.canvas.addEventListener('mousedown', (e) => {
-    if (!state.compareMode) return;
-    const rect = els.canvas.getBoundingClientRect();
-    const scaleX = els.canvas.width / rect.width;
-    const mx = (e.clientX - rect.left) * scaleX;
-    const splitX = els.canvas.width * 0.5;
-    if (Math.abs(mx - splitX) < 8) {
-      state.dragging = true;
-      els.canvas.style.cursor = 'ew-resize';
-    }
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    if (!state.dragging) return;
-    const rect = els.canvas.getBoundingClientRect();
-    const scaleX = els.canvas.width / rect.width;
-    const mx = (e.clientX - rect.left) * scaleX;
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (state.dragging) { state.dragging = false; els.canvas.style.cursor = ''; }
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      // Navigate tree items
-      const items = els.folderTree.querySelectorAll('.tree-item[data-path]');
-      const activeIdx = Array.from(items).findIndex(el => el.classList.contains('active'));
-      let next = e.key === 'ArrowDown' ? activeIdx + 1 : activeIdx - 1;
-      if (next >= 0 && next < items.length) {
-        items[next].click();
-        items[next].scrollIntoView({ block: 'nearest' });
-      }
-    }
+    resizeTimer = setTimeout(() => { if (state.previewActive) { fitCanvas(); renderPreview(); } }, 150);
   });
 
   /* ── Export ── */
@@ -593,14 +691,14 @@
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = reader.result.split(',')[1];
-        const path = await window.electronAPI.saveFile({
+        const filePath = await window.electronAPI.saveFile({
           dataBase64: base64,
           defaultName,
           filters: fmt === 'jpg'
             ? [{ name: 'JPEG', extensions: ['jpg', 'jpeg'] }]
             : [{ name: 'PNG', extensions: ['png'] }],
         });
-        setStatus(path ? `已导出: ${path}` : '导出取消');
+        setStatus(filePath ? `已导出: ${filePath}` : '导出取消');
       };
       reader.readAsDataURL(blob);
     } else {
@@ -617,24 +715,23 @@
   /* ── Splitters ── */
 
   (function initSplitters() {
-    // Left splitter
-    const splitter = document.getElementById('splitter');
+    const splitterLeft = document.getElementById('splitterLeft');
+    const splitterRight = document.getElementById('splitterRight');
     const sidebar = document.getElementById('sidebar');
-    let drag = false, dragRight = false;
-    const rightSplitter = document.getElementById('splitterRight');
     const infoPanel = document.getElementById('infoPanel');
+    let drag = false, dragRight = false;
 
-    splitter.addEventListener('mousedown', (e) => {
+    splitterLeft.addEventListener('mousedown', (e) => {
       drag = true;
-      splitter.classList.add('active');
+      splitterLeft.classList.add('active');
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
       e.preventDefault();
     });
 
-    rightSplitter.addEventListener('mousedown', (e) => {
+    splitterRight.addEventListener('mousedown', (e) => {
       dragRight = true;
-      rightSplitter.classList.add('active');
+      splitterRight.classList.add('active');
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
       e.preventDefault();
@@ -656,29 +753,53 @@
     });
 
     document.addEventListener('mouseup', () => {
-      if (drag) { drag = false; splitter.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
-      if (dragRight) { dragRight = false; rightSplitter.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
+      if (drag) { drag = false; splitterLeft.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
+      if (dragRight) { dragRight = false; splitterRight.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = ''; }
     });
   })();
 
   /* ── Utils ── */
 
   function setStatus(msg) {
-    els.statusText.textContent = msg;
+    if (els.statusText) els.statusText.textContent = msg;
+    if (els.headerStatus) els.headerStatus.textContent = msg;
   }
 
   function updateButtons() {
     const hasLut = !!state.currentLut;
     const hasImage = !!state.sourceImage;
     els.toggleCompareBtn.disabled = !(hasLut && hasImage);
-    els.fitViewBtn.disabled = !hasImage;
     const canExport = hasLut && hasImage;
     els.exportBtn.disabled = !canExport;
     els.exportFormat.disabled = !canExport;
     els.intensitySlider.disabled = !(hasLut && hasImage);
   }
 
-  // Auto-load default image on startup
+  /* ── IPC events from menu/auto-load ── */
+
+  if (isElectron && window.electronAPI.onAutoLoadLuts) {
+    window.electronAPI.onAutoLoadLuts((dir) => {
+      if (dir) setTimeout(() => loadDirFromPath(dir), 300);
+    });
+  }
+  if (isElectron && window.electronAPI.onMenuLutDirSelected) {
+    window.electronAPI.onMenuLutDirSelected((dir) => {
+      if (dir) loadDirFromPath(dir);
+    });
+  }
+
+  async function loadDirFromPath(dir) {
+    state.rootPath = dir;
+    els.headerPath.textContent = dir;
+    setStatus('正在扫描...');
+    const tree = await window.electronAPI.scanTree(dir);
+    state.treeData = tree;
+    renderTree();
+    const count = countAllFiles(tree);
+    els.headerCount.textContent = `${count} 个 LUT`;
+    setStatus(`已加载 ${count} 个 LUT`);
+  }
+
   setTimeout(async () => {
     if (thumbSourceImg) {
       await loadDefaultImage();

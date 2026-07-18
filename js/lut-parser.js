@@ -8,6 +8,10 @@ class LUTParser {
         return LUTParser.parseCube(text, file.name);
       case 'vlt':
         return LUTParser.parseVLT(text, file.name);
+      case '3dl':
+        return LUTParser.parse3DL(text, file.name);
+      case 'csp':
+        return LUTParser.parseCSP(text, file.name);
       default:
         throw new Error(`不支持的 LUT 格式: .${ext}`);
     }
@@ -20,6 +24,10 @@ class LUTParser {
         return LUTParser.parseCube(text, fileName);
       case 'vlt':
         return LUTParser.parseVLT(text, fileName);
+      case '3dl':
+        return LUTParser.parse3DL(text, fileName);
+      case 'csp':
+        return LUTParser.parseCSP(text, fileName);
       default:
         throw new Error(`不支持的 LUT 格式: .${ext}`);
     }
@@ -96,6 +104,78 @@ class LUTParser {
 
     console.log(`[LUT] 解析 .vlt: "${name}" size=${size}, 条目=${data.length}`);
     return { name, size, data, type: 'vlt' };
+  }
+
+  static parse3DL(text, name) {
+    const lines = text.split(/\r?\n/);
+    const data = [];
+    let size = 33;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+
+      if (trimmed.startsWith('3DMESH')) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length >= 2) size = parseInt(parts[1], 10);
+        continue;
+      }
+
+      const parts = trimmed.split(/\s+/);
+      if (parts.length === 3) {
+        let r = parseFloat(parts[0]);
+        let g = parseFloat(parts[1]);
+        let b = parseFloat(parts[2]);
+        if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+          if (r > 1 || g > 1 || b > 1) { r /= 255; g /= 255; b /= 255; }
+          data.push([r, g, b]);
+        }
+      }
+    }
+
+    if (data.length === 0) throw new Error('无效的 .3dl 文件');
+    const expected = size * size * size;
+    if (data.length !== expected) {
+      const cbrt = Math.round(Math.cbrt(data.length));
+      if (cbrt >= 2) size = cbrt;
+    }
+
+    return { name, size, data, type: '3dl' };
+  }
+
+  static parseCSP(text, name) {
+    const lines = text.split(/\r?\n/);
+    const data = [];
+    let size = 33;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      if (trimmed.startsWith('LUT_3D_SIZE')) {
+        size = parseInt(trimmed.split(/\s+/)[1], 10);
+        continue;
+      }
+      if (trimmed.startsWith('LUT_3D_INPUT_RANGE') || trimmed.startsWith('LUT_3D_OUTPUT_RANGE')) continue;
+
+      const parts = trimmed.split(/\s+/);
+      if (parts.length === 3) {
+        const r = parseFloat(parts[0]);
+        const g = parseFloat(parts[1]);
+        const b = parseFloat(parts[2]);
+        if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+          data.push([r, g, b]);
+        }
+      }
+    }
+
+    const expected = size * size * size;
+    if (data.length !== expected) {
+      const cbrt = Math.round(Math.cbrt(data.length));
+      if (cbrt >= 2) size = cbrt;
+    }
+
+    return { name, size, data, type: 'csp' };
   }
 
   static sampleLUT(lut, r, g, b) {

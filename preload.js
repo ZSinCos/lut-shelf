@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   thumbSetSource: (filePath) => ipcRenderer.invoke('thumb-set-source', filePath),
   thumbCacheGet: (key) => ipcRenderer.invoke('thumb-cache-get', key),
   thumbCachePut: (key, dataBase64) => ipcRenderer.invoke('thumb-cache-put', { key, dataBase64 }),
+  onAutoLoadLuts: (callback) => ipcRenderer.on('auto-load-luts', (_event, dir) => callback(dir)),
+  onMenuLutDirSelected: (callback) => ipcRenderer.on('menu-lut-dir-selected', (_event, dir) => callback(dir)),
 });

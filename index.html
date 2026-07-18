@@ -3,16 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LUT 预览工具</title>
+  <title>LUT 书架</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="app">
     <header>
-      <h1>LUT 预览工具</h1>
+      <h1>LUT 书架</h1>
       <div class="header-actions">
-        <button id="loadDirBtn" class="btn btn-primary" title="选择 LUT 文件夹">📂 选择目录</button>
+        <button id="loadDirBtn" class="btn btn-primary">📂 选择目录</button>
         <span class="header-path" id="headerPath"></span>
+        <span class="header-count" id="headerCount"></span>
+        <span class="header-status" id="headerStatus"></span>
       </div>
     </header>
 
@@ -20,90 +22,76 @@
       <!-- 左侧：文件夹树 -->
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
-          <div class="sidebar-title-row">
-            <h2>LUT 文件夹</h2>
-          </div>
+          <h2>文件夹</h2>
         </div>
         <div id="folderTree" class="folder-tree">
-          <div class="empty-state">
-            <p>点击上方「选择目录」</p>
-          </div>
+          <div class="empty-state"><p>点击「选择目录」</p></div>
         </div>
       </aside>
 
-      <div class="splitter" id="splitter"></div>
+      <div class="splitter" id="splitterLeft"></div>
 
-      <!-- 中间：预览 -->
-      <section class="preview-area">
-        <div class="toolbar">
-          <label class="btn">
-            上传图片
-            <input type="file" id="imageInput" accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.orf,.raf,.dng,.pef,.srw,.x3f" hidden />
-          </label>
-          <button id="toggleCompareBtn" class="btn" disabled>对比模式</button>
-          <div class="intensity-group">
-            <label for="intensitySlider" class="intensity-label">强度</label>
-            <input type="range" id="intensitySlider" min="0" max="100" value="100" class="intensity-slider" disabled />
-            <span id="intensityValue" class="intensity-value">100%</span>
+      <!-- 中间：书架网格 -->
+      <section class="shelf-area" id="shelfArea">
+        <div class="shelf-header" id="shelfHeader">
+          <span class="shelf-title" id="shelfTitle">选择一个文件夹</span>
+          <div class="shelf-controls">
+            <input type="text" id="shelfSearch" placeholder="搜索 LUT..." class="shelf-search" />
+            <button id="shelfViewBtn" class="btn-icon" title="切换视图">⊞</button>
           </div>
-          <div class="export-group">
-            <button id="exportBtn" class="btn" disabled>导出</button>
-            <select id="exportFormat" class="btn export-format">
-              <option value="png">PNG</option>
-              <option value="jpg">JPG</option>
-            </select>
-          </div>
-          <button id="fitViewBtn" class="btn" disabled>适应视图</button>
-          <span id="statusText" class="status-text"></span>
         </div>
-        <div class="canvas-container" id="canvasContainer">
-          <canvas id="previewCanvas"></canvas>
-          <div class="placeholder" id="placeholder">
-            <div class="placeholder-icon">🖼️</div>
-            <p>选择 LUT 后自动预览效果</p>
-            <p class="placeholder-sub">拖入图片或点击「上传图片」更换参考图</p>
+        <div class="shelf-grid" id="shelfGrid">
+          <div class="empty-state"><p>选择一个文件夹查看 LUT</p></div>
+        </div>
+        <div id="previewOverlay" class="preview-overlay" style="display:none">
+          <div class="preview-toolbar">
+            <button id="previewBackBtn" class="btn">← 返回书架</button>
+            <label class="btn">
+              上传图片
+              <input type="file" id="imageInput" accept="image/*,.rw2,.arw,.cr2,.cr3,.nef,.nrw,.orf,.raf,.dng" hidden />
+            </label>
+            <button id="toggleCompareBtn" class="btn" disabled>对比模式</button>
+            <div class="intensity-group">
+              <label for="intensitySlider" class="intensity-label">强度</label>
+              <input type="range" id="intensitySlider" min="0" max="100" value="100" class="intensity-slider" disabled />
+              <span id="intensityValue" class="intensity-value">100%</span>
+            </div>
+            <div class="export-group">
+              <button id="exportBtn" class="btn" disabled>导出</button>
+              <select id="exportFormat" class="btn export-format"><option value="png">PNG</option><option value="jpg">JPG</option></select>
+            </div>
+            <span id="statusText" class="status-text"></span>
+          </div>
+          <div class="preview-canvas-wrap">
+            <canvas id="previewCanvas"></canvas>
+            <div class="placeholder" id="placeholder">
+              <p>拖入图片或点击「上传图片」</p>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- 右侧：LUT 信息 -->
-      <div class="splitter splitter-right" id="splitterRight" style="display:none"></div>
+      <div class="splitter" id="splitterRight" style="display:none"></div>
 
-      <aside class="info-panel" id="infoPanel" style="width:0;overflow:hidden">
+      <!-- 右侧：LUT 信息 -->
+      <aside class="info-panel" id="infoPanel">
         <div class="info-empty" id="infoEmpty">
-          <p>选择一个 LUT 文件查看详情</p>
+          <p>选择一个 LUT 查看详情</p>
         </div>
         <div class="info-content" id="infoContent" style="display:none">
-          <div class="info-preview" id="infoPreview">
-            <div class="info-preview-label">效果预览</div>
-            <canvas id="infoPreviewCanvas"></canvas>
+          <div class="info-preview">
+            <div class="info-section-label">效果预览</div>
+            <canvas id="infoPreviewCanvas" class="info-preview-canvas"></canvas>
           </div>
           <div class="info-details">
-            <div class="info-row">
-              <span class="info-label">名称</span>
-              <span class="info-value" id="infoName"></span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">作者</span>
-              <span class="info-value" id="infoAuthor"></span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">说明</span>
-              <span class="info-value info-desc" id="infoDesc"></span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">格式</span>
-              <span class="info-value" id="infoFormat"></span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">尺寸</span>
-              <span class="info-value" id="infoSize"></span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">路径</span>
-              <span class="info-value info-path" id="infoPath"></span>
-            </div>
+            <div class="info-row"><span class="info-label">名称</span><span class="info-value" id="infoName"></span></div>
+            <div class="info-row"><span class="info-label">作者</span><span class="info-value" id="infoAuthor"></span></div>
+            <div class="info-row"><span class="info-label">说明</span><span class="info-value info-desc" id="infoDesc"></span></div>
+            <div class="info-row"><span class="info-label">格式</span><span class="info-value" id="infoFormat"></span></div>
+            <div class="info-row"><span class="info-label">尺寸</span><span class="info-value" id="infoSize"></span></div>
+            <div class="info-row"><span class="info-label">路径</span><span class="info-value info-path" id="infoPath"></span></div>
           </div>
+          <button id="previewFromInfoBtn" class="btn" style="margin-top:12px;width:100%">🔍 完整预览</button>
         </div>
       </aside>
     </main>

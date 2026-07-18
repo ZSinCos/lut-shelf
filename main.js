@@ -267,7 +267,7 @@ ipcMain.handle('extract-raw-preview', async (event, filePath) => {
 
 /* ── Repo (folder-based, like Obsidian) ── */
 
-const LUT_EXTENSIONS = new Set(['.vlt', '.cube']);
+const LUT_EXTENSIONS = new Set(['.vlt', '.cube', '.3dl', '.csp']);
 
 function getRepoPath() {
   const config = loadConfig();
