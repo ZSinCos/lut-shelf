@@ -11,6 +11,8 @@
     lutIntensity: 100,
     compareMode: false,
     previewActive: false,
+    splitXRatio: 0.5,
+    dragging: false,
   };
 
   const els = {
@@ -774,11 +776,22 @@
       const intensityAlpha = state.lutIntensity / 100;
       ctx.clearRect(0, 0, w, h);
       if (state.compareMode) {
-        const splitX = Math.round(w * 0.5);
+        const splitX = Math.round(w * state.splitXRatio);
+        // Left side: original
         ctx.drawImage(origCache, 0, 0, splitX, h, 0, 0, splitX, h);
-        ctx.globalAlpha = intensityAlpha;
+        // Right side: LUT at intensity
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(splitX, 0, w - splitX, h);
+        ctx.clip();
         ctx.drawImage(lutCache, 0, 0, w, h);
-        ctx.globalAlpha = 1;
+        if (intensityAlpha < 1) {
+          ctx.globalAlpha = 1 - intensityAlpha;
+          ctx.drawImage(origCache, 0, 0, w, h);
+          ctx.globalAlpha = 1;
+        }
+        ctx.restore();
+        // Split line
         ctx.save();
         ctx.strokeStyle = '#e94560';
         ctx.lineWidth = 2;
@@ -791,8 +804,8 @@
         ctx.fillStyle = 'rgba(233,69,96,0.85)';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('LUT', Math.round(splitX / 2), 18);
-        ctx.fillText('原始', Math.round(splitX + (w - splitX) / 2), 18);
+        ctx.fillText('原始', Math.round(splitX / 2), 18);
+        ctx.fillText('LUT', Math.round(splitX + (w - splitX) / 2), 18);
         ctx.restore();
       } else {
         ctx.drawImage(origCache, 0, 0, w, h);
@@ -823,6 +836,35 @@
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (state.previewActive) { fitCanvas(); renderPreview(); } }, 150);
+  });
+
+  /* ── Compare mode drag ── */
+
+  els.previewCanvas.addEventListener('mousedown', (e) => {
+    if (!state.compareMode) return;
+    const rect = els.previewCanvas.getBoundingClientRect();
+    const scaleX = els.previewCanvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const splitX = Math.round(els.previewCanvas.width * state.splitXRatio);
+    if (Math.abs(mx - splitX) < 12) {
+      state.dragging = true;
+      els.previewCanvas.style.cursor = 'ew-resize';
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!state.dragging) return;
+    const rect = els.previewCanvas.getBoundingClientRect();
+    const scaleX = els.previewCanvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    state.splitXRatio = Math.max(0.05, Math.min(0.95, mx / els.previewCanvas.width));
+    renderPreview();
+    e.preventDefault();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (state.dragging) { state.dragging = false; els.previewCanvas.style.cursor = ''; }
   });
 
   /* ── Export ── */
