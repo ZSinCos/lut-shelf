@@ -497,20 +497,13 @@ header h1 {
 /* ── Info Panel (right) ── */
 
 .info-panel {
-  width: 0;
-  min-width: 0;
+  width: var(--infopanel-width);
+  min-width: 220px;
   max-width: 40vw;
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  overflow: hidden;
-  transition: width 0.2s ease, min-width 0.2s ease;
-}
-
-.info-panel.open {
-  width: var(--infopanel-width);
-  min-width: 220px;
   overflow-y: auto;
 }
 

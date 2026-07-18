@@ -276,25 +276,15 @@
     if (files.length === 0) {
       grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
       els.shelfPagination.style.display = 'none';
-      els.infoPanel.classList.remove('open');
-      els.infoContent.style.display = 'none';
-      els.infoEmpty.style.display = 'block';
-      document.getElementById('splitterRight').style.display = 'none';
       return;
     }
     renderPage();
   }
 
-  function renderPage(skipInfoClose) {
+  function renderPage() {
     const grid = els.shelfGrid;
     const activePath = els.shelfGrid.querySelector('.shelf-card.active')?.dataset.path;
     grid.innerHTML = '';
-    if (!skipInfoClose) {
-      els.infoPanel.classList.remove('open');
-      els.infoContent.style.display = 'none';
-      els.infoEmpty.style.display = 'block';
-      document.getElementById('splitterRight').style.display = 'none';
-    }
 
     if (shelfObserver) shelfObserver.disconnect();
     shelfObserver = new IntersectionObserver((entries) => {
@@ -364,7 +354,7 @@
   if (window.ResizeObserver) {
     gridResizeObs = new ResizeObserver(() => {
       if (!pagination.files.length || searchActive) return;
-      if (recalcPagination()) renderPage(true);
+      if (recalcPagination()) renderPage();
     });
     setTimeout(() => {
       if (els.shelfGrid) gridResizeObs.observe(els.shelfGrid);
@@ -552,8 +542,6 @@
   function showInfo(lut, fileInfo) {
     els.infoEmpty.style.display = 'none';
     els.infoContent.style.display = 'block';
-    els.infoPanel.classList.add('open');
-    document.getElementById('splitterRight').style.display = '';
 
     els.infoName.textContent = lut.name;
     els.infoAuthor.textContent = guessAuthor(fileInfo.path, lut.name) || '未知';
