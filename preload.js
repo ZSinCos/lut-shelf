@@ -45,4 +45,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMenuRescan: (callback) => ipcRenderer.on('menu-rescan', () => callback()),
   onScanProgress: (callback) => ipcRenderer.on('scan-progress', (_event, data) => callback(data)),
   parseLutSize: (filePath) => ipcRenderer.invoke('parse-lut-size', filePath),
+  setThemeColor: (color) => ipcRenderer.invoke('set-theme-color', color),
 });

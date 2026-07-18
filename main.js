@@ -195,6 +195,14 @@ ipcMain.handle('save-lut-dir', async (event, dirPath) => {
   return true;
 });
 
+ipcMain.handle('set-theme-color', async (event, color) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && win.setTitleBarOverlay) {
+    win.setTitleBarOverlay({ color, symbolColor: color === '#f5f5f5' ? '#1a1a2e' : '#e8e8e8', height: 38 });
+  }
+  return true;
+});
+
 ipcMain.handle('scan-tree', async (event, dirPath) => {
   if (!db) return { folders: [], files: [] };
   if (!dirPath) return { folders: [], files: [] };

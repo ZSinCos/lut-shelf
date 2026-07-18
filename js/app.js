@@ -62,6 +62,11 @@
     zoomResetBtn: document.getElementById('zoomResetBtn'),
     zoomControl: document.getElementById('zoomControl'),
     previewCanvasWrap: document.getElementById('previewCanvasWrap'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsOverlay: document.getElementById('settingsOverlay'),
+    settingsCloseBtn: document.getElementById('settingsCloseBtn'),
+    themeToggle: document.getElementById('themeToggle'),
+    themeLabel: document.getElementById('themeLabel'),
     tagList: document.getElementById('tagList'),
     addTagBtn: document.getElementById('addTagBtn'),
     infoTags: document.getElementById('infoTags'),
@@ -1111,6 +1116,40 @@
       els.previewCanvas.style.cursor = z > 1 ? 'grab' : '';
     }
   });
+
+  /* ── Settings & Theme ── */
+
+  function applyTheme(isLight) {
+    document.documentElement.setAttribute('data-theme', isLight ? 'light' : '');
+    localStorage.setItem('lutTheme', isLight ? 'light' : 'dark');
+    if (els.themeToggle) els.themeToggle.checked = isLight;
+    if (els.themeLabel) els.themeLabel.textContent = isLight ? '浅色模式' : '深色模式';
+    if (isElectron && window.electronAPI.setThemeColor) {
+      window.electronAPI.setThemeColor(isLight ? '#f5f5f5' : '#1a1a2e');
+    }
+  }
+
+  els.settingsBtn.addEventListener('click', () => {
+    els.themeToggle.checked = document.documentElement.getAttribute('data-theme') === 'light';
+    els.themeLabel.textContent = els.themeToggle.checked ? '浅色模式' : '深色模式';
+    els.settingsOverlay.style.display = 'flex';
+  });
+
+  els.settingsCloseBtn.addEventListener('click', () => {
+    els.settingsOverlay.style.display = 'none';
+  });
+
+  els.settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === els.settingsOverlay) els.settingsOverlay.style.display = 'none';
+  });
+
+  els.themeToggle.addEventListener('change', () => {
+    applyTheme(els.themeToggle.checked);
+  });
+
+  // Restore saved theme
+  const savedTheme = localStorage.getItem('lutTheme');
+  if (savedTheme === 'light') applyTheme(true);
 
   /* ── Image handling ── */
 
