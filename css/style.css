@@ -467,6 +467,81 @@ header h1 {
   justify-content: flex-end;
 }
 
+/* ── Infinite scroll ── */
+
+.infinite-sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+/* ── Dialog (settings) ── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 320px;
+  max-width: 420px;
+}
+
+.dialog h3 {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row:last-of-type {
+  border-bottom: none;
+}
+
+.setting-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setting-options {
+  display: flex;
+  gap: 12px;
+}
+
+.setting-options label {
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.setting-options input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 /* ── Info panel actions ── */
 
 .info-actions {

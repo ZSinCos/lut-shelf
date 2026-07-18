@@ -62,6 +62,10 @@
     zoomResetBtn: document.getElementById('zoomResetBtn'),
     zoomControl: document.getElementById('zoomControl'),
     previewCanvasWrap: document.getElementById('previewCanvasWrap'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsOverlay: document.getElementById('settingsOverlay'),
+    settingsCloseBtn: document.getElementById('settingsCloseBtn'),
+    shelfModeRadios: document.querySelectorAll('input[name="shelfMode"]'),
     tagList: document.getElementById('tagList'),
     addTagBtn: document.getElementById('addTagBtn'),
     infoTags: document.getElementById('infoTags'),
@@ -325,15 +329,19 @@
   function renderShelf(files) {
     const grid = els.shelfGrid;
     pagination.files = files;
-    pagination.page = 0;
-    pagination.pageSize = calcPageSize();
-    pagination.totalPages = Math.max(1, Math.ceil(files.length / pagination.pageSize));
     if (files.length === 0) {
       grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
       els.shelfPagination.style.display = 'none';
       return;
     }
-    renderPage();
+    if (state.useInfiniteScroll) {
+      renderInfinite(files);
+    } else {
+      pagination.page = 0;
+      pagination.pageSize = calcPageSize();
+      pagination.totalPages = Math.max(1, Math.ceil(files.length / pagination.pageSize));
+      renderPage();
+    }
   }
 
   function renderPage() {
@@ -385,7 +393,7 @@
   });
 
   els.shelfGrid.addEventListener('wheel', (e) => {
-    if (pagination.totalPages <= 1) return;
+    if (state.useInfiniteScroll || pagination.totalPages <= 1) return;
     if (e.deltaMode === 0) {
       wheelAccum += e.deltaY;
     } else {
@@ -409,11 +417,95 @@
   if (window.ResizeObserver) {
     gridResizeObs = new ResizeObserver(() => {
       if (!pagination.files.length || searchActive) return;
-      if (recalcPagination()) renderPage();
+      if (state.useInfiniteScroll) {
+        recalcInfiniteBatchSize();
+      } else if (recalcPagination()) {
+        renderPage();
+      }
     });
     setTimeout(() => {
       if (els.shelfGrid) gridResizeObs.observe(els.shelfGrid);
     }, 100);
+  }
+
+  /* ── Infinite Scroll ── */
+
+  let infiniteSentinel = null;
+  let infiniteObserver = null;
+  let infiniteBatchSize = 30;
+  let infiniteLoaded = 0;
+
+  function recalcInfiniteBatchSize() {
+    const newSize = calcPageSize();
+    if (newSize !== infiniteBatchSize) {
+      infiniteBatchSize = newSize;
+      return true;
+    }
+    return false;
+  }
+
+  function renderInfinite(files) {
+    const grid = els.shelfGrid;
+    pagination.files = files;
+    infiniteBatchSize = calcPageSize();
+    infiniteLoaded = 0;
+    grid.innerHTML = '';
+
+    if (infiniteObserver) infiniteObserver.disconnect();
+    if (infiniteSentinel && infiniteSentinel.parentNode) infiniteSentinel.parentNode.removeChild(infiniteSentinel);
+
+    shelfObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const card = entry.target;
+          const path = card.dataset.path;
+          if (!card.dataset.thumbLoaded) {
+            card.dataset.thumbLoaded = '1';
+            generateThumbForCard(card, path);
+          }
+          shelfObserver.unobserve(card);
+        }
+      }
+    }, { rootMargin: '200px' });
+
+    infiniteSentinel = document.createElement('div');
+    infiniteSentinel.className = 'infinite-sentinel';
+    grid.appendChild(infiniteSentinel);
+
+    infiniteObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && infiniteLoaded < pagination.files.length) {
+          loadMoreInfinite();
+        }
+      }
+    }, { rootMargin: '400px' });
+    infiniteObserver.observe(infiniteSentinel);
+
+    els.shelfPagination.style.display = 'none';
+    loadMoreInfinite();
+  }
+
+  function loadMoreInfinite() {
+    const grid = els.shelfGrid;
+    const files = pagination.files;
+    const end = Math.min(infiniteLoaded + infiniteBatchSize, files.length);
+    const batch = files.slice(infiniteLoaded, end);
+
+    for (const f of batch) {
+      const card = createShelfCard(f);
+      if (infiniteSentinel && infiniteSentinel.parentNode) {
+        grid.insertBefore(card, infiniteSentinel);
+      } else {
+        grid.appendChild(card);
+      }
+      if (shelfObserver) shelfObserver.observe(card);
+    }
+
+    infiniteLoaded = end;
+
+    if (infiniteLoaded >= files.length && infiniteSentinel) {
+      infiniteSentinel.style.display = 'none';
+    }
   }
 
   function extname(name) {
@@ -1034,6 +1126,42 @@
       els.previewCanvas.style.cursor = z > 1 ? 'grab' : '';
     }
   });
+
+  /* ── Settings ── */
+
+  state.useInfiniteScroll = localStorage.getItem('lutShelfMode') === 'infinite';
+
+  function applyShelfMode() {
+    const mode = state.useInfiniteScroll ? 'infinite' : 'pagination';
+    localStorage.setItem('lutShelfMode', mode);
+    for (const radio of els.shelfModeRadios) {
+      radio.checked = radio.value === mode;
+    }
+    if (pagination.files.length) renderShelf(pagination.files);
+  }
+
+  els.settingsBtn.addEventListener('click', () => {
+    applyShelfMode(); // sync radios
+    els.settingsOverlay.style.display = 'flex';
+  });
+
+  els.settingsCloseBtn.addEventListener('click', () => {
+    els.settingsOverlay.style.display = 'none';
+  });
+
+  els.settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === els.settingsOverlay) els.settingsOverlay.style.display = 'none';
+  });
+
+  for (const radio of els.shelfModeRadios) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      state.useInfiniteScroll = radio.value === 'infinite';
+      applyShelfMode();
+    });
+  }
+
+  applyShelfMode();
 
   /* ── Image handling ── */
 

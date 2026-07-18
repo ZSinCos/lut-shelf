@@ -15,8 +15,26 @@
         <span class="header-path" id="headerPath"></span>
         <span class="header-count" id="headerCount"></span>
         <span class="header-status" id="headerStatus"></span>
+        <button id="settingsBtn" class="btn" title="设置">⚙️</button>
       </div>
     </header>
+
+    <!-- 设置弹窗 -->
+    <div id="settingsOverlay" class="dialog-overlay" style="display:none">
+      <div class="dialog">
+        <h3>设置</h3>
+        <div class="setting-row">
+          <label class="setting-label">书架模式</label>
+          <div class="setting-options">
+            <label><input type="radio" name="shelfMode" value="pagination" /> 分页</label>
+            <label><input type="radio" name="shelfMode" value="infinite" /> 无限滚动</label>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button id="settingsCloseBtn" class="btn">关闭</button>
+        </div>
+      </div>
+    </div>
 
     <main class="main-layout">
       <!-- 左侧：文件夹树 -->
