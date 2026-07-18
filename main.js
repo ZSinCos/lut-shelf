@@ -129,6 +129,12 @@ function createWindow() {
     minHeight: 600,
     title: 'LUT 书架',
     backgroundColor: '#1a1a2e',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#1a1a2e',
+      symbolColor: '#e8e8e8',
+      height: 38,
+    },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

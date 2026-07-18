@@ -33,6 +33,7 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  padding-right: 140px;
   height: 38px;
   background: var(--bg-primary);
   -webkit-app-region: drag;
