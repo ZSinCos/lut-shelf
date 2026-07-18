@@ -194,10 +194,10 @@ ipcMain.handle('scan-tree', async (event, dirPath) => {
   if (!dirPath) return { folders: [], files: [] };
 
   const win = BrowserWindow.fromWebContents(event.sender);
-  const stats = await db.scanAndSync(dirPath, (scanned, added, removed) => {
+  const stats = await db.scanAndSync(dirPath, (scanned, added, removed, done) => {
     try {
       if (win && !win.isDestroyed()) {
-        win.webContents.send('scan-progress', { scanned, added, removed, done: removed > 0 || scanned > 5000 });
+        win.webContents.send('scan-progress', { scanned, added, removed, done });
       }
     } catch {}
   });
@@ -372,10 +372,10 @@ ipcMain.handle('db-get-stats', async () => {
 ipcMain.handle('db-re-scan', async (event, dirPath) => {
   if (!db) return null;
   const win = BrowserWindow.fromWebContents(event.sender);
-  return db.scanAndSync(dirPath, (scanned, added, removed) => {
+  return db.scanAndSync(dirPath, (scanned, added, removed, done) => {
     try {
       if (win && !win.isDestroyed()) {
-        win.webContents.send('scan-progress', { scanned, added, removed, done: removed > 0 || scanned > 5000 });
+        win.webContents.send('scan-progress', { scanned, added, removed, done });
       }
     } catch {}
   });

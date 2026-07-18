@@ -90,7 +90,7 @@ class LutDB {
         } else if (entry.isFile() && LUT_EXTS.has(path.extname(entry.name).toLowerCase())) {
           foundPaths.add(full);
           total++;
-          if (total % 100 === 0 && onProgress) onProgress(total, 0, 0);
+          if (total % 100 === 0 && onProgress) onProgress(total, 0, 0, false);
           const stat = await fsp.stat(full);
           const ext = path.extname(entry.name).toLowerCase().slice(1);
           const existing = selectLut.get(full);
@@ -114,7 +114,7 @@ class LutDB {
       delLut.run(p);
     }
 
-    if (onProgress) onProgress(total, foundPaths.size - existingPaths.size, removed.length);
+    if (onProgress) onProgress(total, foundPaths.size - existingPaths.size, removed.length, true);
     this._cleanFolders();
     return { total: foundPaths.size, added: foundPaths.size - existingPaths.size, removed: removed.length };
   }

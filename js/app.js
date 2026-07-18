@@ -976,6 +976,8 @@
           setStatus(`正在扫描... ${data.scanned} 个文件`);
         }
       });
+    } else if (isElectron) {
+      setStatus('正在扫描...');
     }
     const tree = await window.electronAPI.scanTree(dir);
     state.treeData = tree;
