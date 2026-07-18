@@ -1084,7 +1084,7 @@
   function fitCanvas() {
     if (!state.sourceImage) return;
     const rect = canvasWrap.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) { setTimeout(fitCanvas, 50); return; }
+    if (rect.width <= 0 || rect.height <= 0) { setTimeout(() => { fitCanvas(); if (state.currentLut) renderPreview(); }, 50); return; }
     const pad = 20;
     const maxW = Math.max(rect.width - pad, 100);
     const maxH = Math.max(rect.height - pad, 100);
@@ -1100,6 +1100,7 @@
     els.previewCanvas.style.display = 'block';
     els.placeholder.style.display = 'none';
     cacheValid = false;
+    if (state.sourceImage && state.currentLut) renderPreview();
   }
 
   /* ── Rendering ── */
