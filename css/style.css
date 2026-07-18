@@ -483,14 +483,6 @@ header h1 {
   color: #f1c40f;
 }
 
-.fav-btn.favorited::before {
-  content: '★';
-}
-
-.fav-btn:not(.favorited)::before {
-  content: '☆';
-}
-
 /* ── Tree items ── */
 
 .tree-item {
