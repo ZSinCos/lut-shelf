@@ -970,24 +970,31 @@
     els.previewOverlay.style.display = 'none';
     state.previewActive = false;
     state.zoom = 100;
+    state.panX = 0;
+    state.panY = 0;
   }
 
-  /* ── Zoom ── */
+  /* ── Zoom & Pan ── */
 
   function applyZoom() {
     const z = state.zoom / 100;
-    els.previewCanvas.style.transform = `scale(${z})`;
+    const transform = z > 1 ? `translate(${state.panX}px, ${state.panY}px) scale(${z})` : `scale(${z})`;
+    els.previewCanvas.style.transform = transform;
+    els.previewCanvas.style.cursor = z > 1 ? 'grab' : '';
     els.zoomLabel.textContent = `${state.zoom}%`;
     els.zoomSlider.value = state.zoom;
   }
 
   els.zoomSlider.addEventListener('input', () => {
     state.zoom = parseInt(els.zoomSlider.value);
+    if (state.zoom <= 100) { state.panX = 0; state.panY = 0; }
     applyZoom();
   });
 
   els.zoomResetBtn.addEventListener('click', () => {
     state.zoom = 100;
+    state.panX = 0;
+    state.panY = 0;
     applyZoom();
   });
 
@@ -995,9 +1002,38 @@
     if (!state.previewActive) return;
     e.preventDefault();
     const delta = e.deltaY > 0 ? -10 : 10;
+    const prevZ = state.zoom;
     state.zoom = Math.max(10, Math.min(400, state.zoom + delta));
+    if (state.zoom > 100 && prevZ <= 100) { state.panX = 0; state.panY = 0; }
+    if (state.zoom <= 100) { state.panX = 0; state.panY = 0; }
     applyZoom();
   }, { passive: false });
+
+  els.previewCanvasWrap.addEventListener('mousedown', (e) => {
+    if (!state.previewActive || state.zoom <= 100) return;
+    if (e.target !== els.previewCanvas) return;
+    state.isPanning = true;
+    state.panStartX = e.clientX - state.panX;
+    state.panStartY = e.clientY - state.panY;
+    els.previewCanvas.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (state.isPanning) {
+      state.panX = e.clientX - state.panStartX;
+      state.panY = e.clientY - state.panStartY;
+      applyZoom();
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (state.isPanning) {
+      state.isPanning = false;
+      const z = state.zoom / 100;
+      els.previewCanvas.style.cursor = z > 1 ? 'grab' : '';
+    }
+  });
 
   /* ── Image handling ── */
 
@@ -1062,7 +1098,12 @@
       renderPreview();
       setStatus(`RAW: ${file.name}`);
       els.zoomControl.style.display = 'flex';
-      state.zoom = 100;
+  state.zoom = 100;
+  state.panX = 0;
+  state.panY = 0;
+  state.isPanning = false;
+  state.panStartX = 0;
+  state.panStartY = 0;
       applyZoom();
       return;
     }
