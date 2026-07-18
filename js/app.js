@@ -507,6 +507,19 @@
     return i >= 0 ? p.slice(i + 1) : p;
   }
 
+  const thumbLutCache = new Map();
+
+  async function getCachedLut(filePath) {
+    if (thumbLutCache.has(filePath)) return thumbLutCache.get(filePath);
+    try {
+      const content = await window.electronAPI.readFile(filePath);
+      if (!content) return null;
+      const lut = LUTParser.parseLUTFromText(basename(filePath), content);
+      thumbLutCache.set(filePath, lut);
+      return lut;
+    } catch { return null; }
+  }
+
   async function generateThumbForCard(card, filePath) {
     const thumbCanvas = card.querySelector('.shelf-card-thumb canvas');
     if (!thumbCanvas) return;
@@ -522,13 +535,10 @@
         cx.drawImage(s, 0, 0, s.width, s.height, -sx, -sy, sw, sh);
         const imgData = cx.getImageData(0, 0, w, h);
 
-        try {
-          const content = await window.electronAPI.readFile(filePath);
-          if (content) {
-            const lut = LUTParser.parseLUTFromText(basename(filePath), content);
-            LUTApply.applyLUT(imgData, lut);
-          }
-        } catch (e) {}
+        const lut = await getCachedLut(filePath);
+        if (lut) {
+          try { LUTApply.applyLUT(imgData, lut); } catch {}
+        }
 
         cx.putImageData(imgData, 0, 0);
       }
@@ -1558,6 +1568,7 @@
     renderTree();
     els.favSection.classList.remove('active');
     els.tagList.querySelectorAll('.tag-item.active').forEach(el => el.classList.remove('active'));
+    thumbLutCache.clear();
     const stats = tree._stats || {};
     const count = countAllFiles(tree);
     els.headerCount.textContent = `${count} 个 LUT`;
