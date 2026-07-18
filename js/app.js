@@ -29,8 +29,6 @@
     infoEmpty: document.getElementById('infoEmpty'),
     infoContent: document.getElementById('infoContent'),
     infoName: document.getElementById('infoName'),
-    infoAuthor: document.getElementById('infoAuthor'),
-    infoDesc: document.getElementById('infoDesc'),
     infoFormat: document.getElementById('infoFormat'),
     infoSize: document.getElementById('infoSize'),
     infoPath: document.getElementById('infoPath'),
@@ -48,7 +46,11 @@
     statusText: document.getElementById('statusText'),
     headerStatus: document.getElementById('headerStatus'),
     placeholder: document.querySelector('.preview-canvas-wrap .placeholder'),
+    infoNotes: document.getElementById('infoNotes'),
+    infoAuthorInput: document.getElementById('infoAuthor'),
+    infoDescInput: document.getElementById('infoDesc'),
   };
+  let noteSaveTimer = null;
 
   const isElectron = !!window.electronAPI;
   const RAW_EXTS = ['rw2', 'arw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'raf', 'dng', 'pef', 'srw', 'x3f'];
@@ -147,15 +149,10 @@
     if (!isElectron) return;
     const dir = await window.electronAPI.selectDir();
     if (!dir) return;
-    state.rootPath = dir;
-    els.headerPath.textContent = dir;
-    setStatus('正在扫描...');
-    const tree = await window.electronAPI.scanTree(dir);
-    state.treeData = tree;
-    renderTree();
-    const count = countAllFiles(tree);
-    els.headerCount.textContent = `${count} 个 LUT`;
-    setStatus(`已加载 ${count} 个 LUT`);
+    if (isElectron && window.electronAPI.saveLutDir) {
+      window.electronAPI.saveLutDir(dir);
+    }
+    loadDirFromPath(dir);
   });
 
   function countAllFiles(node) {
@@ -229,12 +226,19 @@
     }
   }
 
-  function selectFolder(folderNode, folderPath) {
+  async function selectFolder(folderNode, folderPath) {
     els.folderTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
-    const lutFiles = getAllLutFiles(folderNode.children, folderPath);
     state.currentFolderPath = folderPath;
-    state.currentFolderFiles = lutFiles;
     els.shelfTitle.textContent = folderPath;
+
+    let lutFiles;
+    if (isElectron && window.electronAPI.dbGetFolderFiles) {
+      const rows = await window.electronAPI.dbGetFolderFiles(folderPath);
+      lutFiles = rows.map(r => ({ name: r.name, path: r.path, size: r.file_size, mtime: r.mtime }));
+    } else {
+      lutFiles = getAllLutFiles(folderNode.children, folderPath);
+    }
+    state.currentFolderFiles = lutFiles;
     searchActive = false;
     els.shelfSearch.value = '';
     renderShelf(lutFiles);
@@ -406,33 +410,42 @@
     const q = els.shelfSearch.value.toLowerCase().trim();
     searchActive = q.length > 0;
     if (searchActive) {
-      const filtered = pagination.files.filter(f => f.name.toLowerCase().includes(q));
       const grid = els.shelfGrid;
       grid.innerHTML = '';
       if (shelfObserver) shelfObserver.disconnect();
-      if (filtered.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><p>没有匹配的 LUT</p></div>';
-        els.shelfPagination.style.display = 'none';
-        return;
-      }
       els.shelfPagination.style.display = 'none';
-      shelfObserver = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const card = entry.target;
-            if (!card.dataset.thumbLoaded) {
-              card.dataset.thumbLoaded = '1';
-              generateThumbForCard(card, card.dataset.path);
-            }
-            shelfObserver.unobserve(card);
-          }
+      const doSearch = async () => {
+        let results;
+        if (isElectron && window.electronAPI.dbSearch) {
+          results = await window.electronAPI.dbSearch(q);
+        } else {
+          results = pagination.files.filter(f => f.name.toLowerCase().includes(q));
         }
-      }, { rootMargin: '200px' });
-      for (const f of filtered) {
-        const card = createShelfCard(f);
-        grid.appendChild(card);
-        shelfObserver.observe(card);
-      }
+        if (els.shelfSearch.value.toLowerCase().trim() !== q) return;
+        if (results.length === 0) {
+          grid.innerHTML = '<div class="empty-state"><p>没有匹配的 LUT</p></div>';
+          return;
+        }
+        shelfObserver = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const card = entry.target;
+              if (!card.dataset.thumbLoaded) {
+                card.dataset.thumbLoaded = '1';
+                generateThumbForCard(card, card.dataset.path);
+              }
+              shelfObserver.unobserve(card);
+            }
+          }
+        }, { rootMargin: '200px' });
+        for (const r of results) {
+          const f = { name: r.name, path: r.path, size: r.file_size || 0, mtime: r.mtime || 0 };
+          const card = createShelfCard(f);
+          grid.appendChild(card);
+          shelfObserver.observe(card);
+        }
+      };
+      doSearch();
     } else {
       els.shelfPagination.style.display = pagination.totalPages > 1 ? '' : 'none';
       renderPage();
@@ -544,8 +557,6 @@
     els.infoContent.style.display = 'block';
 
     els.infoName.textContent = lut.name;
-    els.infoAuthor.textContent = guessAuthor(fileInfo.path, lut.name) || '未知';
-    els.infoDesc.textContent = guessDescription(fileInfo.path) || '无说明';
     els.infoFormat.textContent = lut.type.toUpperCase();
     els.infoSize.textContent = `${lut.size}³`;
     els.infoPath.textContent = fileInfo.path;
@@ -567,7 +578,44 @@
       pctx.textAlign = 'center';
       pctx.fillText('加载参考图中...', pw / 2, ph / 2);
     }
+
+    if (isElectron && window.electronAPI.dbGetLut) {
+      window.electronAPI.dbGetLut(fileInfo.path).then(row => {
+        if (!row) {
+          els.infoAuthorInput.value = guessAuthor(fileInfo.path, lut.name) || '';
+          els.infoDescInput.value = guessDescription(fileInfo.path) || '';
+          els.infoNotes.value = '';
+          return;
+        }
+        els.infoAuthorInput.value = row.author || guessAuthor(fileInfo.path, lut.name) || '';
+        els.infoDescInput.value = row.description || guessDescription(fileInfo.path) || '';
+        els.infoNotes.value = row.notes || '';
+      });
+    } else {
+      els.infoAuthorInput.value = guessAuthor(fileInfo.path, lut.name) || '';
+      els.infoDescInput.value = guessDescription(fileInfo.path) || '';
+      els.infoNotes.value = '';
+    }
   }
+
+  function saveNoteField(field) {
+    if (noteSaveTimer) clearTimeout(noteSaveTimer);
+    noteSaveTimer = setTimeout(() => {
+      const p = state.currentLutPath;
+      if (!p || !isElectron) return;
+      if (field === 'notes') {
+        window.electronAPI.dbUpdateNotes(p, els.infoNotes.value);
+      } else if (field === 'author') {
+        window.electronAPI.dbUpdateAuthor(p, els.infoAuthorInput.value);
+      } else if (field === 'description') {
+        window.electronAPI.dbUpdateDescription(p, els.infoDescInput.value);
+      }
+    }, 400);
+  }
+
+  els.infoNotes.addEventListener('input', () => saveNoteField('notes'));
+  els.infoAuthorInput.addEventListener('input', () => saveNoteField('author'));
+  els.infoDescInput.addEventListener('input', () => saveNoteField('description'));
 
   /* ── Preview Overlay ── */
 
@@ -902,17 +950,26 @@
       if (dir) loadDirFromPath(dir);
     });
   }
+  if (isElectron && window.electronAPI.onMenuRescan) {
+    window.electronAPI.onMenuRescan(() => {
+      if (state.rootPath) loadDirFromPath(state.rootPath);
+    });
+  }
 
   async function loadDirFromPath(dir) {
     state.rootPath = dir;
     els.headerPath.textContent = dir;
     setStatus('正在扫描...');
+    if (isElectron && window.electronAPI.saveLutDir) {
+      window.electronAPI.saveLutDir(dir);
+    }
     const tree = await window.electronAPI.scanTree(dir);
     state.treeData = tree;
     renderTree();
+    const stats = tree._stats || {};
     const count = countAllFiles(tree);
     els.headerCount.textContent = `${count} 个 LUT`;
-    setStatus(`已加载 ${count} 个 LUT`);
+    setStatus(`已加载 ${count} 个 LUT (新增 ${stats.added || 0}, 移除 ${stats.removed || 0})`);
   }
 
   setTimeout(async () => {

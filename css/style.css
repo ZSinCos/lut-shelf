@@ -583,3 +583,42 @@ header h1 {
   color: var(--text-secondary);
   font-family: monospace;
 }
+
+.info-input {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.info-input:focus {
+  border-color: var(--accent);
+}
+
+.info-textarea {
+  width: 100%;
+  padding: 5px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  transition: border-color 0.15s;
+}
+
+.info-textarea:focus {
+  border-color: var(--accent);
+}
+
+.info-textarea::placeholder {
+  color: #555;
+}

@@ -90,13 +90,23 @@
           </div>
           <div class="info-details">
             <div class="info-row"><span class="info-label">名称</span><span class="info-value" id="infoName"></span></div>
-            <div class="info-row"><span class="info-label">作者</span><span class="info-value" id="infoAuthor"></span></div>
-            <div class="info-row"><span class="info-label">说明</span><span class="info-value info-desc" id="infoDesc"></span></div>
+            <div class="info-row">
+              <span class="info-label">作者</span>
+              <input class="info-input" id="infoAuthor" placeholder="输入作者名..." />
+            </div>
+            <div class="info-row">
+              <span class="info-label">风格</span>
+              <input class="info-input" id="infoDesc" placeholder="输入风格说明..." />
+            </div>
             <div class="info-row"><span class="info-label">格式</span><span class="info-value" id="infoFormat"></span></div>
             <div class="info-row"><span class="info-label">尺寸</span><span class="info-value" id="infoSize"></span></div>
             <div class="info-row"><span class="info-label">路径</span><span class="info-value info-path" id="infoPath"></span></div>
+            <div class="info-row">
+              <span class="info-label">心得体会</span>
+              <textarea class="info-textarea" id="infoNotes" placeholder="写下你的使用心得..." rows="4"></textarea>
+            </div>
           </div>
-          <button id="previewFromInfoBtn" class="btn" style="margin-top:12px;width:100%">🔍 完整预览</button>
+          <button id="previewFromInfoBtn" class="btn" style="margin-top:8px;width:100%">🔍 完整预览</button>
         </div>
       </aside>
     </main>
