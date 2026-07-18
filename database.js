@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const fsp = fs.promises;
 
 const LUT_EXTS = new Set(['.vlt', '.cube', '.3dl', '.csp']);
 
@@ -48,51 +49,85 @@ class LutDB {
     this.db.close();
   }
 
-  /* ── Scan & Sync ── */
+  /* ── Async Scan & Sync ── */
 
-  scanAndSync(dirPath) {
+  async scanAndSync(dirPath, onProgress) {
     const existingPaths = new Set(
       this.db.prepare('SELECT path FROM luts').all().map(r => r.path)
     );
     const foundPaths = new Set();
+    const insertFolder = this.db.prepare('INSERT OR IGNORE INTO folders (path, name, parent_id) VALUES (?, ?, ?)');
+    const selectFolder = this.db.prepare('SELECT id FROM folders WHERE path = ?');
+    const selectLut = this.db.prepare('SELECT id, mtime, file_size FROM luts WHERE path = ?');
+    const updateLut = this.db.prepare(`
+      UPDATE luts SET folder_id=?, format=?, file_size=?, mtime=?, updated_at=datetime('now','localtime')
+      WHERE path=?
+    `);
+    const insertLut = this.db.prepare(`
+      INSERT OR IGNORE INTO luts (path, name, folder_id, format, file_size, mtime)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    let total = 0;
 
-    const walk = (absDir, parentId) => {
+    const ensureFolder = (absPath, parentId) => {
+      const existing = selectFolder.get(absPath);
+      if (existing) return existing.id;
+      insertFolder.run(absPath, path.basename(absPath), parentId);
+      return selectFolder.get(absPath).id;
+    };
+
+    const walk = async (absDir, parentId) => {
       let entries;
-      try { entries = fs.readdirSync(absDir, { withFileTypes: true }); }
+      try { entries = await fsp.readdir(absDir, { withFileTypes: true }); }
       catch { return; }
       entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
       for (const entry of entries) {
         if (entry.name.startsWith('.')) continue;
         const full = path.join(absDir, entry.name);
         if (entry.isDirectory()) {
-          const folderId = this._ensureFolder(full, parentId);
-          walk(full, folderId);
+          const folderId = ensureFolder(full, parentId);
+          await walk(full, folderId);
         } else if (entry.isFile() && LUT_EXTS.has(path.extname(entry.name).toLowerCase())) {
           foundPaths.add(full);
-          if (existingPaths.has(full)) {
-            const stat = fs.statSync(full);
-            const row = this.db.prepare('SELECT mtime, file_size FROM luts WHERE path = ?').get(full);
-            if (row && (row.mtime !== stat.mtimeMs || row.file_size !== stat.size)) {
-              this._upsertLut(full, parentId);
+          total++;
+          if (total % 100 === 0 && onProgress) onProgress(total, 0, 0);
+          const stat = await fsp.stat(full);
+          const ext = path.extname(entry.name).toLowerCase().slice(1);
+          const existing = selectLut.get(full);
+          if (existing) {
+            if (existing.mtime !== stat.mtimeMs || existing.file_size !== stat.size) {
+              updateLut.run(parentId, ext, stat.size, stat.mtimeMs, full);
             }
           } else {
-            this._upsertLut(full, parentId);
+            insertLut.run(full, entry.name, parentId, ext, stat.size, stat.mtimeMs);
           }
         }
       }
     };
 
-    const rootId = this._ensureFolder(dirPath, null);
-    walk(dirPath, rootId);
+    const rootId = ensureFolder(dirPath, null);
+    await walk(dirPath, rootId);
 
     const removed = [...existingPaths].filter(p => !foundPaths.has(p));
+    const delLut = this.db.prepare('DELETE FROM luts WHERE path = ?');
     for (const p of removed) {
-      this.db.prepare('DELETE FROM luts WHERE path = ?').run(p);
+      delLut.run(p);
     }
 
+    if (onProgress) onProgress(total, foundPaths.size - existingPaths.size, removed.length);
     this._cleanFolders();
-
     return { total: foundPaths.size, added: foundPaths.size - existingPaths.size, removed: removed.length };
+  }
+
+  _cleanFolders() {
+    const orphans = this.db.prepare(`
+      SELECT f.id FROM folders f
+      LEFT JOIN luts l ON l.folder_id = f.id
+      LEFT JOIN folders child ON child.parent_id = f.id
+      WHERE l.id IS NULL AND child.id IS NULL AND f.parent_id IS NOT NULL
+    `).all();
+    const del = this.db.prepare('DELETE FROM folders WHERE id = ?');
+    for (const o of orphans) del.run(o.id);
   }
 
   quickCheck(dirPath) {
@@ -120,47 +155,19 @@ class LutDB {
     return changed;
   }
 
-  _ensureFolder(absPath, parentId) {
-    const existing = this.db.prepare('SELECT id FROM folders WHERE path = ?').get(absPath);
-    if (existing) return existing.id;
-    const name = path.basename(absPath);
-    const result = this.db.prepare('INSERT INTO folders (path, name, parent_id) VALUES (?, ?, ?)').run(absPath, name, parentId);
-    return result.lastInsertRowid;
-  }
+  /* ── Lazy LUT size parsing ── */
 
-  _upsertLut(fullPath, folderId) {
-    const name = path.basename(fullPath);
-    const ext = path.extname(fullPath).toLowerCase();
-    const stat = fs.statSync(fullPath);
-    let lutSize = 0;
+  parseAndSaveLutSize(filePath) {
     try {
-      const content = fs.readFileSync(fullPath, 'utf8');
+      const content = fs.readFileSync(filePath, 'utf8');
       const m = content.match(/LUT_3D_SIZE\s+(\d+)/i);
-      lutSize = m ? parseInt(m[1], 10) : 0;
-    } catch {}
-    const existing = this.db.prepare('SELECT id FROM luts WHERE path = ?').get(fullPath);
-    if (existing) {
-      this.db.prepare(`
-        UPDATE luts SET folder_id=?, format=?, lut_size=?, file_size=?, mtime=?, updated_at=datetime('now','localtime')
-        WHERE path=?
-      `).run(folderId, ext.slice(1), lutSize, stat.size, stat.mtimeMs, fullPath);
-    } else {
-      this.db.prepare(`
-        INSERT INTO luts (path, name, folder_id, format, lut_size, file_size, mtime)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(fullPath, name, folderId, ext.slice(1), lutSize, stat.size, stat.mtimeMs);
-    }
-  }
-
-  _cleanFolders() {
-    const orphans = this.db.prepare(`
-      SELECT f.id FROM folders f
-      LEFT JOIN luts l ON l.folder_id = f.id
-      LEFT JOIN folders child ON child.parent_id = f.id
-      WHERE l.id IS NULL AND child.id IS NULL AND f.parent_id IS NOT NULL
-    `).all();
-    for (const o of orphans) {
-      this.db.prepare('DELETE FROM folders WHERE id = ?').run(o.id);
+      const size = m ? parseInt(m[1], 10) : 0;
+      if (size) {
+        this.db.prepare("UPDATE luts SET lut_size = ?, updated_at = datetime('now','localtime') WHERE path = ?").run(size, filePath);
+      }
+      return size;
+    } catch {
+      return 0;
     }
   }
 
@@ -186,22 +193,14 @@ class LutDB {
     for (const l of luts) {
       if (folderMap.has(l.folder_id)) {
         folderMap.get(l.folder_id).files.push({
-          id: l.id,
-          name: l.name,
-          path: l.path,
-          format: l.format,
-          lut_size: l.lut_size,
-          file_size: l.file_size,
-          mtime: l.mtime,
-          notes: l.notes,
-          author: l.author,
-          description: l.description,
+          id: l.id, name: l.name, path: l.path, format: l.format,
+          lut_size: l.lut_size, file_size: l.file_size, mtime: l.mtime,
+          notes: l.notes, author: l.author, description: l.description,
         });
       }
     }
     const toApi = (folder) => ({
-      name: folder.name,
-      path: folder.path,
+      name: folder.name, path: folder.path,
       folders: folder.folders.map(toApi),
       files: folder.files,
     });

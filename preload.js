@@ -34,4 +34,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onAutoLoadLuts: (callback) => ipcRenderer.on('auto-load-luts', (_event, dir) => callback(dir)),
   onMenuLutDirSelected: (callback) => ipcRenderer.on('menu-lut-dir-selected', (_event, dir) => callback(dir)),
   onMenuRescan: (callback) => ipcRenderer.on('menu-rescan', () => callback()),
+  onScanProgress: (callback) => ipcRenderer.on('scan-progress', (_event, data) => callback(data)),
+  parseLutSize: (filePath) => ipcRenderer.invoke('parse-lut-size', filePath),
 });

@@ -500,6 +500,11 @@
     const lut = LUTParser.parseLUTFromText(fileInfo.name, content);
     state.currentLut = lut;
 
+    // Lazily parse and save LUT size to DB
+    if (isElectron && window.electronAPI.parseLutSize && lut.size > 0) {
+      window.electronAPI.parseLutSize(fileInfo.path);
+    }
+
     setStatus(`已加载: ${fileInfo.name}`);
     showInfo(lut, fileInfo);
 
@@ -959,9 +964,18 @@
   async function loadDirFromPath(dir) {
     state.rootPath = dir;
     els.headerPath.textContent = dir;
-    setStatus('正在扫描...');
+    setStatus('正在扫描... 0 个文件');
     if (isElectron && window.electronAPI.saveLutDir) {
       window.electronAPI.saveLutDir(dir);
+    }
+    if (isElectron && window.electronAPI.onScanProgress) {
+      window.electronAPI.onScanProgress((data) => {
+        if (data.done) {
+          setStatus(`扫描完成: ${data.scanned} 个文件`);
+        } else {
+          setStatus(`正在扫描... ${data.scanned} 个文件`);
+        }
+      });
     }
     const tree = await window.electronAPI.scanTree(dir);
     state.treeData = tree;

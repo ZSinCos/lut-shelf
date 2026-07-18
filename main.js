@@ -193,7 +193,14 @@ ipcMain.handle('scan-tree', async (event, dirPath) => {
   if (!db) return { folders: [], files: [] };
   if (!dirPath) return { folders: [], files: [] };
 
-  const stats = db.scanAndSync(dirPath);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const stats = await db.scanAndSync(dirPath, (scanned, added, removed) => {
+    try {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('scan-progress', { scanned, added, removed, done: removed > 0 || scanned > 5000 });
+      }
+    } catch {}
+  });
   const tree = db.getTree();
   tree._stats = stats;
   return tree;
@@ -364,5 +371,17 @@ ipcMain.handle('db-get-stats', async () => {
 
 ipcMain.handle('db-re-scan', async (event, dirPath) => {
   if (!db) return null;
-  return db.scanAndSync(dirPath);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return db.scanAndSync(dirPath, (scanned, added, removed) => {
+    try {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('scan-progress', { scanned, added, removed, done: removed > 0 || scanned > 5000 });
+      }
+    } catch {}
+  });
+});
+
+ipcMain.handle('parse-lut-size', async (event, filePath) => {
+  if (!db) return 0;
+  return db.parseAndSaveLutSize(filePath);
 });
