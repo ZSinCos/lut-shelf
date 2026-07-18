@@ -796,7 +796,7 @@
     if (!p || !isElectron) return;
     const isFav = await window.electronAPI.toggleFavorite(p);
     els.favBtn.classList.toggle('favorited', isFav);
-    els.favBtn.textContent = isFav ? ' 已收藏' : ' 收藏';
+    els.favBtn.textContent = isFav ? '★ 已收藏' : '☆ 收藏';
     refreshFavCount();
   });
 
