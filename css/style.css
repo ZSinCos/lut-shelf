@@ -193,6 +193,70 @@ header h1 {
   line-height: 1.6;
 }
 
+/* ── Favorites section ── */
+
+.sidebar-fav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.sidebar-fav:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.sidebar-fav.active {
+  background: rgba(233,69,96,0.15);
+  color: var(--accent);
+}
+
+.fav-icon {
+  font-size: 14px;
+}
+
+.fav-label {
+  font-size: 12px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.fav-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+/* ── Info panel actions ── */
+
+.info-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.fav-btn {
+  transition: color 0.15s;
+}
+
+.fav-btn.favorited {
+  color: #f1c40f;
+}
+
+.fav-btn.favorited::before {
+  content: '★';
+}
+
+.fav-btn:not(.favorited)::before {
+  content: '☆';
+}
+
 /* ── Tree items ── */
 
 .tree-item {

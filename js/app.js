@@ -51,6 +51,9 @@
     infoNotes: document.getElementById('infoNotes'),
     infoAuthorInput: document.getElementById('infoAuthor'),
     infoDescInput: document.getElementById('infoDesc'),
+    favSection: document.getElementById('favSection'),
+    favCount: document.getElementById('favCount'),
+    favBtn: document.getElementById('favBtn'),
   };
   let noteSaveTimer = null;
 
@@ -217,6 +220,7 @@
 
       item.addEventListener('click', (e) => {
         e.stopPropagation();
+        els.favSection.classList.remove('active');
         selectFolder(f, f.name);
         const isOpen = childrenDiv.classList.toggle('open');
         toggle.classList.toggle('expanded', isOpen);
@@ -251,6 +255,7 @@
 
       item.addEventListener('click', (e) => {
         e.stopPropagation();
+        els.favSection.classList.remove('active');
         selectLutFile(f);
       });
 
@@ -623,16 +628,23 @@
           els.infoAuthorInput.value = guessAuthor(fileInfo.path, lut.name) || '';
           els.infoDescInput.value = guessDescription(fileInfo.path) || '';
           els.infoNotes.value = '';
+          els.favBtn.classList.remove('favorited');
+          els.favBtn.textContent = '☆ 收藏';
           return;
         }
         els.infoAuthorInput.value = row.author || guessAuthor(fileInfo.path, lut.name) || '';
         els.infoDescInput.value = row.description || guessDescription(fileInfo.path) || '';
         els.infoNotes.value = row.notes || '';
+        const isFav = !!row.favorite;
+        els.favBtn.classList.toggle('favorited', isFav);
+        els.favBtn.textContent = isFav ? '★ 已收藏' : '☆ 收藏';
       });
     } else {
       els.infoAuthorInput.value = guessAuthor(fileInfo.path, lut.name) || '';
       els.infoDescInput.value = guessDescription(fileInfo.path) || '';
       els.infoNotes.value = '';
+      els.favBtn.classList.remove('favorited');
+      els.favBtn.textContent = '☆ 收藏';
     }
   }
 
@@ -654,6 +666,43 @@
   els.infoNotes.addEventListener('input', () => saveNoteField('notes'));
   els.infoAuthorInput.addEventListener('input', () => saveNoteField('author'));
   els.infoDescInput.addEventListener('input', () => saveNoteField('description'));
+
+  /* ── Favorites ── */
+
+  async function refreshFavCount() {
+    if (!isElectron) return;
+    try {
+      const favs = await window.electronAPI.getFavorites();
+      els.favCount.textContent = favs.length;
+    } catch {}
+  }
+
+  async function showFavorites() {
+    els.folderTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
+    els.favSection.classList.add('active');
+    els.shelfTitle.textContent = '⭐ 我的收藏';
+    searchActive = false;
+    els.shelfSearch.value = '';
+
+    let favs;
+    try { favs = await window.electronAPI.getFavorites(); } catch { favs = []; }
+    const files = favs.map(r => ({ name: r.name, path: r.path, size: r.file_size || 0, mtime: r.mtime || 0 }));
+    state.currentFolderFiles = files;
+    renderShelf(files);
+  }
+
+  els.favSection.addEventListener('click', () => {
+    showFavorites();
+  });
+
+  els.favBtn.addEventListener('click', async () => {
+    const p = state.currentLutPath;
+    if (!p || !isElectron) return;
+    const isFav = await window.electronAPI.toggleFavorite(p);
+    els.favBtn.classList.toggle('favorited', isFav);
+    els.favBtn.textContent = isFav ? ' 已收藏' : ' 收藏';
+    refreshFavCount();
+  });
 
   /* ── Preview Overlay ── */
 
@@ -1034,6 +1083,8 @@
     });
   }
 
+  refreshFavCount();
+
   async function loadDirFromPath(dir) {
     state.rootPath = dir;
     els.headerPath.textContent = dir;
@@ -1055,10 +1106,12 @@
     const tree = await window.electronAPI.scanTree(dir);
     state.treeData = tree;
     renderTree();
+    els.favSection.classList.remove('active');
     const stats = tree._stats || {};
     const count = countAllFiles(tree);
     els.headerCount.textContent = `${count} 个 LUT`;
     setStatus(`已加载 ${count} 个 LUT (新增 ${stats.added || 0}, 移除 ${stats.removed || 0})`);
+    refreshFavCount();
   }
 
   setTimeout(async () => {

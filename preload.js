@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dbUpdateDescription: (path, description) => ipcRenderer.invoke('db-update-description', { path, description }),
   dbSearch: (query) => ipcRenderer.invoke('db-search', query),
   dbGetFolderFiles: (folderPath) => ipcRenderer.invoke('db-get-folder-files', folderPath),
+  toggleFavorite: (filePath) => ipcRenderer.invoke('db-toggle-favorite', filePath),
+  getFavorites: () => ipcRenderer.invoke('db-get-favorites'),
   dbGetStats: () => ipcRenderer.invoke('db-get-stats'),
 
   /* Events */

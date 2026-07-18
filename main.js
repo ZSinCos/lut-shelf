@@ -369,6 +369,16 @@ ipcMain.handle('db-get-stats', async () => {
   return db.getAllStats();
 });
 
+ipcMain.handle('db-toggle-favorite', async (event, filePath) => {
+  if (!db) return false;
+  return db.toggleFavorite(filePath);
+});
+
+ipcMain.handle('db-get-favorites', async () => {
+  if (!db) return [];
+  return db.getFavorites();
+});
+
 ipcMain.handle('db-re-scan', async (event, dirPath) => {
   if (!db) return null;
   const win = BrowserWindow.fromWebContents(event.sender);

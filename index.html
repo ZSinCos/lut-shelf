@@ -21,6 +21,11 @@
     <main class="main-layout">
       <!-- 左侧：文件夹树 -->
       <aside class="sidebar" id="sidebar">
+        <div class="sidebar-fav" id="favSection">
+          <span class="fav-icon">⭐</span>
+          <span class="fav-label">我的收藏</span>
+          <span class="fav-count" id="favCount">0</span>
+        </div>
         <div class="sidebar-header">
           <h2>文件夹</h2>
         </div>
@@ -106,7 +111,10 @@
               <textarea class="info-textarea" id="infoNotes" placeholder="写下你的使用心得..." rows="4"></textarea>
             </div>
           </div>
-          <button id="previewFromInfoBtn" class="btn" style="margin-top:8px;width:100%">🔍 完整预览</button>
+          <div class="info-actions">
+            <button id="favBtn" class="btn fav-btn" style="flex:1">☆ 收藏</button>
+            <button id="previewFromInfoBtn" class="btn" style="flex:1">🔍 完整预览</button>
+          </div>
         </div>
       </aside>
     </main>

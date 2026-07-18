@@ -43,6 +43,8 @@ class LutDB {
       CREATE INDEX IF NOT EXISTS idx_luts_path ON luts(path);
       CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
     `);
+    // Add favorite column if upgrading from older schema
+    try { this.db.exec("ALTER TABLE luts ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"); } catch {}
   }
 
   close() {
@@ -212,6 +214,18 @@ class LutDB {
 
   getLutByPath(filePath) {
     return this.db.prepare('SELECT * FROM luts WHERE path = ?').get(filePath);
+  }
+
+  toggleFavorite(filePath) {
+    const row = this.db.prepare('SELECT favorite FROM luts WHERE path = ?').get(filePath);
+    if (!row) return false;
+    const newVal = row.favorite ? 0 : 1;
+    this.db.prepare("UPDATE luts SET favorite = ?, updated_at = datetime('now','localtime') WHERE path = ?").run(newVal, filePath);
+    return !!newVal;
+  }
+
+  getFavorites() {
+    return this.db.prepare('SELECT * FROM luts WHERE favorite = 1 ORDER BY updated_at DESC').all();
   }
 
   updateNotes(path, notes) {
