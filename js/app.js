@@ -285,13 +285,16 @@
     renderPage();
   }
 
-  function renderPage() {
+  function renderPage(skipInfoClose) {
     const grid = els.shelfGrid;
+    const activePath = els.shelfGrid.querySelector('.shelf-card.active')?.dataset.path;
     grid.innerHTML = '';
-    els.infoPanel.classList.remove('open');
-    els.infoContent.style.display = 'none';
-    els.infoEmpty.style.display = 'block';
-    document.getElementById('splitterRight').style.display = 'none';
+    if (!skipInfoClose) {
+      els.infoPanel.classList.remove('open');
+      els.infoContent.style.display = 'none';
+      els.infoEmpty.style.display = 'block';
+      document.getElementById('splitterRight').style.display = 'none';
+    }
 
     if (shelfObserver) shelfObserver.disconnect();
     shelfObserver = new IntersectionObserver((entries) => {
@@ -314,6 +317,7 @@
 
     for (const f of pageFiles) {
       const card = createShelfCard(f);
+      if (activePath && card.dataset.path === activePath) card.classList.add('active');
       grid.appendChild(card);
       shelfObserver.observe(card);
     }
@@ -360,7 +364,7 @@
   if (window.ResizeObserver) {
     gridResizeObs = new ResizeObserver(() => {
       if (!pagination.files.length || searchActive) return;
-      if (recalcPagination()) renderPage();
+      if (recalcPagination()) renderPage(true);
     });
     setTimeout(() => {
       if (els.shelfGrid) gridResizeObs.observe(els.shelfGrid);
