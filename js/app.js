@@ -226,17 +226,18 @@
     }
   }
 
-  async function selectFolder(folderNode, folderPath) {
+  async function selectFolder(folderNode, folderName) {
     els.folderTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
+    const folderPath = folderNode.path || folderName;
     state.currentFolderPath = folderPath;
-    els.shelfTitle.textContent = folderPath;
+    els.shelfTitle.textContent = folderName;
 
     let lutFiles;
     if (isElectron && window.electronAPI.dbGetFolderFiles) {
       const rows = await window.electronAPI.dbGetFolderFiles(folderPath);
       lutFiles = rows.map(r => ({ name: r.name, path: r.path, size: r.file_size, mtime: r.mtime }));
     } else {
-      lutFiles = getAllLutFiles(folderNode.children, folderPath);
+      lutFiles = getAllLutFiles(folderNode.children, folderName);
     }
     state.currentFolderFiles = lutFiles;
     searchActive = false;
