@@ -226,6 +226,36 @@
       container.appendChild(childrenDiv);
       renderTreeNodes(f.children, childrenDiv, depth + 1);
     }
+
+    for (const f of node.files) {
+      const item = document.createElement('div');
+      item.className = 'tree-item';
+      item.style.paddingLeft = (12 + depth * 14 + 18) + 'px';
+      item.dataset.path = f.path;
+
+      const toggle = document.createElement('span');
+      toggle.className = 'tree-toggle';
+      toggle.style.visibility = 'hidden';
+      toggle.textContent = '▶';
+      item.appendChild(toggle);
+
+      const icon = document.createElement('span');
+      icon.className = 'tree-icon';
+      icon.textContent = '📄';
+      item.appendChild(icon);
+
+      const label = document.createElement('span');
+      label.className = 'tree-label';
+      label.textContent = f.name;
+      item.appendChild(label);
+
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectLutFile(f);
+      });
+
+      container.appendChild(item);
+    }
   }
 
   async function selectFolder(folderNode, folderName) {
