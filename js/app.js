@@ -57,6 +57,9 @@
     clearImageBtn: document.getElementById('clearImageBtn'),
     expandAllBtn: document.getElementById('expandAllBtn'),
     collapseAllBtn: document.getElementById('collapseAllBtn'),
+    tagList: document.getElementById('tagList'),
+    addTagBtn: document.getElementById('addTagBtn'),
+    infoTags: document.getElementById('infoTags'),
   };
   let noteSaveTimer = null;
 
@@ -641,6 +644,7 @@
         const isFav = !!row.favorite;
         els.favBtn.classList.toggle('favorited', isFav);
         els.favBtn.textContent = isFav ? '★ 已收藏' : '☆ 收藏';
+        if (isElectron) refreshInfoTags(fileInfo.path);
       });
     } else {
       els.infoAuthorInput.value = guessAuthor(fileInfo.path, lut.name) || '';
@@ -729,6 +733,209 @@
 
   els.expandAllBtn.addEventListener('click', expandAllTree);
   els.collapseAllBtn.addEventListener('click', collapseAllTree);
+
+  /* ── Tags ── */
+
+  async function refreshTags() {
+    if (!isElectron) return;
+    try {
+      const tags = await window.electronAPI.getTags();
+      els.tagList.innerHTML = '';
+      for (const tag of tags) {
+        const item = document.createElement('div');
+        item.className = 'tag-item';
+        item.dataset.tagId = tag.id;
+
+        const dot = document.createElement('span');
+        dot.className = 'tag-dot';
+        dot.style.background = tag.color;
+        item.appendChild(dot);
+
+        const name = document.createElement('span');
+        name.className = 'tag-name';
+        name.textContent = tag.name;
+        item.appendChild(name);
+
+        const count = document.createElement('span');
+        count.className = 'tag-count';
+        count.textContent = tag.lut_count || 0;
+        item.appendChild(count);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn-tiny';
+        delBtn.textContent = '✕';
+        delBtn.title = '删除标签';
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await window.electronAPI.deleteTag(tag.id);
+          refreshTags();
+          if (state.currentLutPath) refreshInfoTags(state.currentLutPath);
+        });
+        item.appendChild(delBtn);
+
+        item.addEventListener('click', async () => {
+          els.tagList.querySelectorAll('.tag-item.active').forEach(el => el.classList.remove('active'));
+          item.classList.add('active');
+          const luts = await window.electronAPI.getTagLuts(tag.id);
+          const files = luts.map(r => ({ name: r.name, path: r.path, size: r.file_size || 0, mtime: r.mtime || 0 }));
+          state.currentFolderFiles = files;
+          els.shelfTitle.textContent = `🏷️ ${tag.name}`;
+          searchActive = false;
+          els.shelfSearch.value = '';
+          renderShelf(files);
+        });
+
+        els.tagList.appendChild(item);
+      }
+    } catch {}
+  }
+
+  async function refreshInfoTags(lutPath) {
+    if (!isElectron) return;
+    try {
+      const tags = await window.electronAPI.getLutTags(lutPath);
+      els.infoTags.innerHTML = '';
+      if (!tags.length) {
+        const empty = document.createElement('span');
+        empty.className = 'info-tags-empty';
+        empty.textContent = '无';
+        els.infoTags.appendChild(empty);
+      } else {
+        for (const tag of tags) {
+          const el = document.createElement('span');
+          el.className = 'info-tag';
+          el.style.borderColor = tag.color;
+          el.style.color = tag.color;
+          el.textContent = tag.name;
+
+          const remove = document.createElement('span');
+          remove.className = 'info-tag-remove';
+          remove.textContent = '✕';
+          remove.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await window.electronAPI.removeLutTag(lutPath, tag.id);
+            refreshInfoTags(lutPath);
+            refreshTags();
+          });
+          el.appendChild(remove);
+          els.infoTags.appendChild(el);
+        }
+      }
+      const addBtn = document.createElement('button');
+      addBtn.className = 'info-tag-add-btn';
+      addBtn.textContent = '+ 标签';
+      addBtn.addEventListener('click', () => showTagPicker(lutPath));
+      els.infoTags.appendChild(addBtn);
+    } catch {}
+  }
+
+  async function showTagPicker(lutPath) {
+    const tags = await window.electronAPI.getTags();
+    const existing = await window.electronAPI.getLutTags(lutPath);
+    const existingIds = new Set(existing.map(t => t.id));
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tag-dialog-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'tag-dialog';
+    dialog.innerHTML = `<h3>选择标签</h3>
+      <div class="tag-dialog-list" style="max-height:200px;overflow-y:auto;margin-bottom:12px"></div>
+      <div class="tag-dialog-actions">
+        <button class="btn" id="tagDialogCancel">取消</button>
+      </div>`;
+    overlay.appendChild(dialog);
+
+    const list = dialog.querySelector('.tag-dialog-list');
+    for (const tag of tags) {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = existingIds.has(tag.id);
+      cb.dataset.tagId = tag.id;
+
+      const dot = document.createElement('span');
+      dot.className = 'tag-dot';
+      dot.style.background = tag.color;
+
+      const name = document.createElement('span');
+      name.style.fontSize = '12px';
+      name.textContent = tag.name;
+
+      label.appendChild(cb);
+      label.appendChild(dot);
+      label.appendChild(name);
+      list.appendChild(label);
+    }
+
+    dialog.querySelector('#tagDialogCancel').addEventListener('click', () => {
+      document.body.removeChild(overlay);
+    });
+
+    list.addEventListener('change', async (e) => {
+      if (e.target.type !== 'checkbox') return;
+      const tagId = parseInt(e.target.dataset.tagId);
+      if (e.target.checked) {
+        await window.electronAPI.addLutTag(lutPath, tagId);
+      } else {
+        await window.electronAPI.removeLutTag(lutPath, tagId);
+      }
+      refreshInfoTags(lutPath);
+      refreshTags();
+    });
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+  }
+
+  els.addTagBtn.addEventListener('click', () => {
+    const overlay = document.createElement('div');
+    overlay.className = 'tag-dialog-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'tag-dialog';
+    dialog.innerHTML = `<h3>新建标签</h3>
+      <label>标签名称</label>
+      <input id="newTagName" placeholder="输入标签名称..." />
+      <label>颜色</label>
+      <div class="color-options" id="colorOptions"></div>
+      <div class="tag-dialog-actions">
+        <button class="btn" id="tagCreateCancel">取消</button>
+        <button class="btn btn-primary" id="tagCreateConfirm">创建</button>
+      </div>`;
+    overlay.appendChild(dialog);
+
+    const colors = ['#e94560', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e67e22', '#1abc9c', '#ecf0f1'];
+    let selectedColor = colors[0];
+    const colorContainer = dialog.querySelector('#colorOptions');
+    for (const c of colors) {
+      const swatch = document.createElement('div');
+      swatch.className = 'color-swatch' + (c === selectedColor ? ' selected' : '');
+      swatch.style.background = c;
+      swatch.addEventListener('click', () => {
+        colorContainer.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+        swatch.classList.add('selected');
+        selectedColor = c;
+      });
+      colorContainer.appendChild(swatch);
+    }
+
+    dialog.querySelector('#tagCreateCancel').addEventListener('click', () => document.body.removeChild(overlay));
+    dialog.querySelector('#tagCreateConfirm').addEventListener('click', async () => {
+      const name = dialog.querySelector('#newTagName').value.trim();
+      if (!name) return;
+      await window.electronAPI.createTag(name, selectedColor);
+      document.body.removeChild(overlay);
+      refreshTags();
+    });
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) document.body.removeChild(overlay); });
+  });
+
+  refreshTags();
 
   /* ── Preview Overlay ── */
 
@@ -1140,11 +1347,13 @@
     state.treeData = tree;
     renderTree();
     els.favSection.classList.remove('active');
+    els.tagList.querySelectorAll('.tag-item.active').forEach(el => el.classList.remove('active'));
     const stats = tree._stats || {};
     const count = countAllFiles(tree);
     els.headerCount.textContent = `${count} 个 LUT`;
     setStatus(`已加载 ${count} 个 LUT (新增 ${stats.added || 0}, 移除 ${stats.removed || 0})`);
     refreshFavCount();
+    refreshTags();
   }
 
   setTimeout(async () => {

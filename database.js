@@ -42,6 +42,23 @@ class LutDB {
       CREATE INDEX IF NOT EXISTS idx_luts_folder ON luts(folder_id);
       CREATE INDEX IF NOT EXISTS idx_luts_path ON luts(path);
       CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
+
+      CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        color TEXT NOT NULL DEFAULT '#e94560'
+      );
+
+      CREATE TABLE IF NOT EXISTS lut_tags (
+        lut_id INTEGER NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (lut_id, tag_id),
+        FOREIGN KEY (lut_id) REFERENCES luts(id) ON DELETE CASCADE,
+        FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_lut_tags_lut ON lut_tags(lut_id);
+      CREATE INDEX IF NOT EXISTS idx_lut_tags_tag ON lut_tags(tag_id);
     `);
     // Add favorite column if upgrading from older schema
     try { this.db.exec("ALTER TABLE luts ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"); } catch {}
@@ -226,6 +243,63 @@ class LutDB {
 
   getFavorites() {
     return this.db.prepare('SELECT * FROM luts WHERE favorite = 1 ORDER BY updated_at DESC').all();
+  }
+
+  /* ── Tags ── */
+
+  getAllTags() {
+    return this.db.prepare(`
+      SELECT t.*, COUNT(lt.lut_id) AS lut_count
+      FROM tags t LEFT JOIN lut_tags lt ON t.id = lt.tag_id
+      GROUP BY t.id ORDER BY t.name
+    `).all();
+  }
+
+  createTag(name, color) {
+    try {
+      const info = this.db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)').run(name, color || '#e94560');
+      return { id: info.lastInsertRowid, name, color: color || '#e94560', lut_count: 0 };
+    } catch { return null; }
+  }
+
+  deleteTag(id) {
+    this.db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+    return true;
+  }
+
+  addLutTag(lutPath, tagId) {
+    const lut = this.db.prepare('SELECT id FROM luts WHERE path = ?').get(lutPath);
+    if (!lut) return false;
+    try {
+      this.db.prepare('INSERT OR IGNORE INTO lut_tags (lut_id, tag_id) VALUES (?, ?)').run(lut.id, tagId);
+      return true;
+    } catch { return false; }
+  }
+
+  removeLutTag(lutPath, tagId) {
+    const lut = this.db.prepare('SELECT id FROM luts WHERE path = ?').get(lutPath);
+    if (!lut) return false;
+    this.db.prepare('DELETE FROM lut_tags WHERE lut_id = ? AND tag_id = ?').run(lut.id, tagId);
+    return true;
+  }
+
+  getLutTags(lutPath) {
+    return this.db.prepare(`
+      SELECT t.* FROM tags t
+      JOIN lut_tags lt ON t.id = lt.tag_id
+      JOIN luts l ON l.id = lt.lut_id
+      WHERE l.path = ?
+      ORDER BY t.name
+    `).all(lutPath);
+  }
+
+  getTagLuts(tagId) {
+    return this.db.prepare(`
+      SELECT l.* FROM luts l
+      JOIN lut_tags lt ON l.id = lt.lut_id
+      WHERE lt.tag_id = ?
+      ORDER BY l.name
+    `).all(tagId);
   }
 
   updateNotes(path, notes) {

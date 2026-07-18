@@ -264,6 +264,209 @@ header h1 {
   border-radius: 8px;
 }
 
+/* ── Sidebar tags ── */
+
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.sidebar-section-title .fav-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.tag-item:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.tag-item.active {
+  background: rgba(233,69,96,0.12);
+  color: var(--accent);
+}
+
+.tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tag-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.tag-item .btn-tiny {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.tag-item:hover .btn-tiny {
+  opacity: 1;
+}
+
+/* ── Info panel tags ── */
+
+.info-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 24px;
+}
+
+.info-tags-empty {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.info-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 10px;
+  border: 1px solid;
+  line-height: 1.4;
+}
+
+.info-tag-remove {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+
+.info-tag-remove:hover {
+  opacity: 1;
+}
+
+.info-tag-add-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.info-tag-add-btn:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+
+/* ── Tag dialog ── */
+
+.tag-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.tag-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 280px;
+}
+
+.tag-dialog h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.tag-dialog label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.tag-dialog input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text);
+  font-size: 13px;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+}
+
+.tag-dialog .color-options {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.tag-dialog .color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+
+.tag-dialog .color-swatch:hover,
+.tag-dialog .color-swatch.selected {
+  border-color: var(--text);
+}
+
+.tag-dialog-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 /* ── Info panel actions ── */
 
 .info-actions {

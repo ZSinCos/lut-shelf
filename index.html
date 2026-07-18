@@ -26,6 +26,14 @@
           <span class="fav-label">我的收藏</span>
           <span class="fav-count" id="favCount">0</span>
         </div>
+
+        <div class="sidebar-section-title" id="tagsSectionTitle">
+          <span class="fav-icon">🏷️</span>
+          <span class="fav-label">标签</span>
+          <button id="addTagBtn" class="btn-tiny" title="新建标签" style="margin-left:auto">+</button>
+        </div>
+        <div id="tagList" class="tag-list"></div>
+
         <div class="sidebar-header">
           <h2>文件夹</h2>
           <div class="tree-actions">
@@ -111,6 +119,10 @@
             <div class="info-row"><span class="info-label">格式</span><span class="info-value" id="infoFormat"></span></div>
             <div class="info-row"><span class="info-label">尺寸</span><span class="info-value" id="infoSize"></span></div>
             <div class="info-row"><span class="info-label">路径</span><span class="info-value info-path" id="infoPath"></span></div>
+            <div class="info-row">
+              <span class="info-label">标签</span>
+              <div class="info-tags" id="infoTags"><span class="info-tags-empty">无</span></div>
+            </div>
             <div class="info-row">
               <span class="info-label">心得体会</span>
               <textarea class="info-textarea" id="infoNotes" placeholder="写下你的使用心得..." rows="4"></textarea>

@@ -30,6 +30,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dbGetFolderFiles: (folderPath) => ipcRenderer.invoke('db-get-folder-files', folderPath),
   toggleFavorite: (filePath) => ipcRenderer.invoke('db-toggle-favorite', filePath),
   getFavorites: () => ipcRenderer.invoke('db-get-favorites'),
+  getTags: () => ipcRenderer.invoke('db-get-tags'),
+  createTag: (name, color) => ipcRenderer.invoke('db-create-tag', name, color),
+  deleteTag: (id) => ipcRenderer.invoke('db-delete-tag', id),
+  addLutTag: (lutPath, tagId) => ipcRenderer.invoke('db-add-lut-tag', lutPath, tagId),
+  removeLutTag: (lutPath, tagId) => ipcRenderer.invoke('db-remove-lut-tag', lutPath, tagId),
+  getLutTags: (lutPath) => ipcRenderer.invoke('db-get-lut-tags', lutPath),
+  getTagLuts: (tagId) => ipcRenderer.invoke('db-get-tag-luts', tagId),
   dbGetStats: () => ipcRenderer.invoke('db-get-stats'),
 
   /* Events */

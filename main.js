@@ -379,6 +379,41 @@ ipcMain.handle('db-get-favorites', async () => {
   return db.getFavorites();
 });
 
+ipcMain.handle('db-get-tags', async () => {
+  if (!db) return [];
+  return db.getAllTags();
+});
+
+ipcMain.handle('db-create-tag', async (event, name, color) => {
+  if (!db) return null;
+  return db.createTag(name, color);
+});
+
+ipcMain.handle('db-delete-tag', async (event, id) => {
+  if (!db) return false;
+  return db.deleteTag(id);
+});
+
+ipcMain.handle('db-add-lut-tag', async (event, lutPath, tagId) => {
+  if (!db) return false;
+  return db.addLutTag(lutPath, tagId);
+});
+
+ipcMain.handle('db-remove-lut-tag', async (event, lutPath, tagId) => {
+  if (!db) return false;
+  return db.removeLutTag(lutPath, tagId);
+});
+
+ipcMain.handle('db-get-lut-tags', async (event, lutPath) => {
+  if (!db) return [];
+  return db.getLutTags(lutPath);
+});
+
+ipcMain.handle('db-get-tag-luts', async (event, tagId) => {
+  if (!db) return [];
+  return db.getTagLuts(tagId);
+});
+
 ipcMain.handle('db-re-scan', async (event, dirPath) => {
   if (!db) return null;
   const win = BrowserWindow.fromWebContents(event.sender);
