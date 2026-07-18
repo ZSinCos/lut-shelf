@@ -545,8 +545,8 @@ header h1 {
 }
 
 .export-format {
-  width: 50px;
-  padding: 4px;
+  width: 64px;
+  padding: 4px 6px;
   border-radius: 0 5px 5px 0 !important;
   border-left: none !important;
 }
