@@ -1,3 +1,13 @@
 node_modules/
 dist/
 *.db
+*.vlt
+*.cube
+*.3dl
+*.csp
+S5II*/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+requirements-analysis.md
