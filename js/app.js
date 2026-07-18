@@ -21,6 +21,10 @@
     shelfGrid: document.getElementById('shelfGrid'),
     shelfTitle: document.getElementById('shelfTitle'),
     shelfSearch: document.getElementById('shelfSearch'),
+    shelfPagination: document.getElementById('shelfPagination'),
+    pagePrevBtn: document.getElementById('pagePrevBtn'),
+    pageNextBtn: document.getElementById('pageNextBtn'),
+    pageInfo: document.getElementById('pageInfo'),
     infoPanel: document.getElementById('infoPanel'),
     infoEmpty: document.getElementById('infoEmpty'),
     infoContent: document.getElementById('infoContent'),
@@ -231,26 +235,43 @@
     state.currentFolderPath = folderPath;
     state.currentFolderFiles = lutFiles;
     els.shelfTitle.textContent = folderPath;
-    renderShelf(lutFiles);
+    searchActive = false;
     els.shelfSearch.value = '';
+    renderShelf(lutFiles);
   }
 
   /* ── Bookshelf Grid ── */
 
+  const PAGE_SIZE = 60;
+  const pagination = { files: [], page: 0, totalPages: 0 };
+
   let shelfObserver = null;
+  let wheelAccum = 0;
 
   function renderShelf(files) {
+    const grid = els.shelfGrid;
+    pagination.files = files;
+    pagination.page = 0;
+    pagination.totalPages = Math.max(1, Math.ceil(files.length / PAGE_SIZE));
+    if (files.length === 0) {
+      grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
+      els.shelfPagination.style.display = 'none';
+      els.infoPanel.classList.remove('open');
+      els.infoContent.style.display = 'none';
+      els.infoEmpty.style.display = 'block';
+      document.getElementById('splitterRight').style.display = 'none';
+      return;
+    }
+    renderPage();
+  }
+
+  function renderPage() {
     const grid = els.shelfGrid;
     grid.innerHTML = '';
     els.infoPanel.classList.remove('open');
     els.infoContent.style.display = 'none';
     els.infoEmpty.style.display = 'block';
     document.getElementById('splitterRight').style.display = 'none';
-
-    if (files.length === 0) {
-      grid.innerHTML = '<div class="empty-state"><p>此文件夹下没有 LUT 文件</p></div>';
-      return;
-    }
 
     if (shelfObserver) shelfObserver.disconnect();
     shelfObserver = new IntersectionObserver((entries) => {
@@ -267,48 +288,53 @@
       }
     }, { rootMargin: '200px' });
 
-    for (const f of files) {
-      const card = document.createElement('div');
-      card.className = 'shelf-card';
-      card.dataset.path = f.path;
+    const { files, page, totalPages } = pagination;
+    const start = page * PAGE_SIZE;
+    const pageFiles = files.slice(start, start + PAGE_SIZE);
 
-      const thumbDiv = document.createElement('div');
-      thumbDiv.className = 'shelf-card-thumb';
-      const thumbCanvas = document.createElement('canvas');
-      thumbCanvas.width = 144;
-      thumbCanvas.height = 81;
-      thumbDiv.appendChild(thumbCanvas);
-      card.appendChild(thumbDiv);
-
-      const infoDiv = document.createElement('div');
-      infoDiv.className = 'shelf-card-info';
-
-      const nameDiv = document.createElement('div');
-      nameDiv.className = 'shelf-card-name';
-      nameDiv.textContent = f.name;
-      infoDiv.appendChild(nameDiv);
-
-      const metaDiv = document.createElement('div');
-      metaDiv.className = 'shelf-card-meta';
-      metaDiv.textContent = extname(f.name).toLowerCase().slice(1);
-      infoDiv.appendChild(metaDiv);
-
-      card.appendChild(infoDiv);
-
-      card.addEventListener('click', () => {
-        els.shelfGrid.querySelectorAll('.shelf-card.active').forEach(el => el.classList.remove('active'));
-        card.classList.add('active');
-        selectLutFile(f);
-      });
-
-      card.addEventListener('dblclick', () => {
-        selectLutFile(f).then(() => openPreview());
-      });
-
+    for (const f of pageFiles) {
+      const card = createShelfCard(f);
       grid.appendChild(card);
       shelfObserver.observe(card);
     }
+
+    const showPagination = totalPages > 1;
+    els.shelfPagination.style.display = showPagination ? '' : 'none';
+    if (showPagination) {
+      els.pageInfo.textContent = `${page + 1} / ${totalPages}`;
+      els.pagePrevBtn.disabled = page === 0;
+      els.pageNextBtn.disabled = page >= totalPages - 1;
+    }
   }
+
+  els.pagePrevBtn.addEventListener('click', () => {
+    if (pagination.page > 0) { pagination.page--; renderPage(); }
+  });
+
+  els.pageNextBtn.addEventListener('click', () => {
+    if (pagination.page < pagination.totalPages - 1) { pagination.page++; renderPage(); }
+  });
+
+  els.shelfGrid.addEventListener('wheel', (e) => {
+    if (pagination.totalPages <= 1) return;
+    if (e.deltaMode === 0) {
+      wheelAccum += e.deltaY;
+    } else {
+      wheelAccum += e.deltaY * 40;
+    }
+    if (Math.abs(wheelAccum) >= 80) {
+      const dir = wheelAccum > 0 ? 1 : -1;
+      wheelAccum = 0;
+      const newPage = pagination.page + dir;
+      if (newPage >= 0 && newPage < pagination.totalPages) {
+        pagination.page = newPage;
+        renderPage();
+        e.preventDefault();
+      }
+    } else {
+      e.preventDefault();
+    }
+  }, { passive: false });
 
   function extname(name) {
     const i = name.lastIndexOf('.');
@@ -349,14 +375,80 @@
 
   /* ── Search ── */
 
+  let searchActive = false;
+
   els.shelfSearch.addEventListener('input', () => {
-    const q = els.shelfSearch.value.toLowerCase();
-    const cards = els.shelfGrid.querySelectorAll('.shelf-card');
-    for (const card of cards) {
-      const name = card.querySelector('.shelf-card-name').textContent.toLowerCase();
-      card.style.display = name.includes(q) ? '' : 'none';
+    const q = els.shelfSearch.value.toLowerCase().trim();
+    searchActive = q.length > 0;
+    if (searchActive) {
+      const filtered = pagination.files.filter(f => f.name.toLowerCase().includes(q));
+      const grid = els.shelfGrid;
+      grid.innerHTML = '';
+      if (shelfObserver) shelfObserver.disconnect();
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><p>没有匹配的 LUT</p></div>';
+        els.shelfPagination.style.display = 'none';
+        return;
+      }
+      els.shelfPagination.style.display = 'none';
+      shelfObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const card = entry.target;
+            if (!card.dataset.thumbLoaded) {
+              card.dataset.thumbLoaded = '1';
+              generateThumbForCard(card, card.dataset.path);
+            }
+            shelfObserver.unobserve(card);
+          }
+        }
+      }, { rootMargin: '200px' });
+      for (const f of filtered) {
+        const card = createShelfCard(f);
+        grid.appendChild(card);
+        shelfObserver.observe(card);
+      }
+    } else {
+      els.shelfPagination.style.display = pagination.totalPages > 1 ? '' : 'none';
+      renderPage();
     }
   });
+
+  function createShelfCard(f) {
+    const card = document.createElement('div');
+    card.className = 'shelf-card';
+    card.dataset.path = f.path;
+
+    const thumbDiv = document.createElement('div');
+    thumbDiv.className = 'shelf-card-thumb';
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = 320;
+    thumbCanvas.height = 180;
+    thumbDiv.appendChild(thumbCanvas);
+    card.appendChild(thumbDiv);
+
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'shelf-card-info';
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'shelf-card-name';
+    nameDiv.textContent = f.name;
+    infoDiv.appendChild(nameDiv);
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'shelf-card-meta';
+    metaDiv.textContent = extname(f.name).toLowerCase().slice(1);
+    infoDiv.appendChild(metaDiv);
+    card.appendChild(infoDiv);
+
+    card.addEventListener('click', () => {
+      els.shelfGrid.querySelectorAll('.shelf-card.active').forEach(el => el.classList.remove('active'));
+      card.classList.add('active');
+      selectLutFile(f);
+    });
+    card.addEventListener('dblclick', () => {
+      selectLutFile(f).then(() => openPreview());
+    });
+    return card;
+  }
 
   /* ── Select LUT ── */
 
