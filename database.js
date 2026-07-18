@@ -200,9 +200,11 @@ class LutDB {
       }
     }
     const toApi = (folder) => ({
-      name: folder.name, path: folder.path,
-      folders: folder.folders.map(toApi),
-      files: folder.files,
+      name: folder.name,
+      children: {
+        folders: folder.folders.map(toApi),
+        files: folder.files,
+      },
     });
     return { folders: roots.map(toApi), files: [] };
   }
