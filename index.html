@@ -14,7 +14,6 @@
         <button id="loadDirBtn" class="btn btn-primary">📂 选择目录</button>
         <span class="header-path" id="headerPath"></span>
         <span class="header-count" id="headerCount"></span>
-        <span class="header-status" id="headerStatus"></span>
       </div>
     </header>
 
@@ -64,6 +63,9 @@
         </div>
         <div class="shelf-grid" id="shelfGrid">
           <div class="empty-state"><p>选择一个文件夹查看 LUT</p></div>
+        </div>
+        <div class="status-bar" id="statusBar">
+          <span id="headerStatus" class="status-text"></span>
         </div>
         <div id="previewOverlay" class="preview-overlay" style="display:none">
           <div class="preview-toolbar">
