@@ -54,6 +54,7 @@
     favSection: document.getElementById('favSection'),
     favCount: document.getElementById('favCount'),
     favBtn: document.getElementById('favBtn'),
+    clearImageBtn: document.getElementById('clearImageBtn'),
   };
   let noteSaveTimer = null;
 
@@ -744,6 +745,13 @@
       await loadImageFile(file);
     } catch (err) {
       setStatus('图片加载失败');
+    }
+  });
+
+  els.clearImageBtn.addEventListener('click', () => {
+    if (thumbSourceImg) {
+      loadDefaultImage();
+      setStatus('已切换回默认参考图');
     }
   });
 
