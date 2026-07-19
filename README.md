@@ -2,6 +2,11 @@
 
 一个基于 Electron 的 LUT（3D Lookup Table）预览和管理工具。
 
+## 截图
+
+![主界面](screenshots/main.png)  |  ![对比模式](screenshots/compare.png)
+---|---
+
 ## 功能
 
 - **文件夹树导航** — 浏览 LUT 目录结构
