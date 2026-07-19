@@ -286,6 +286,7 @@ function ensureThumbDir() {
 
 ipcMain.handle('thumb-set-source', async (event, filePath) => {
   try {
+    if (!filePath) { try { fs.unlinkSync(THUMB_SOURCE_PATH); } catch {} return true; }
     if (!fs.existsSync(filePath)) return false;
     const ext = path.extname(filePath).toLowerCase();
     let jpegBuf = null;
@@ -341,6 +342,15 @@ ipcMain.handle('thumb-cache-put', async (event, { key, dataBase64 }) => {
   } catch {
     return false;
   }
+});
+
+ipcMain.handle('thumb-cache-clear', async () => {
+  try {
+    ensureThumbDir();
+    const files = fs.readdirSync(THUMB_DIR);
+    for (const f of files) fs.unlinkSync(path.join(THUMB_DIR, f));
+    return true;
+  } catch { return false; }
 });
 
 /* ── Database IPC ── */

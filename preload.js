@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   thumbSetSource: (filePath) => ipcRenderer.invoke('thumb-set-source', filePath),
   thumbCacheGet: (key) => ipcRenderer.invoke('thumb-cache-get', key),
   thumbCachePut: (key, dataBase64) => ipcRenderer.invoke('thumb-cache-put', { key, dataBase64 }),
+  thumbCacheClear: () => ipcRenderer.invoke('thumb-cache-clear'),
 
   /* Database */
   dbGetLut: (filePath) => ipcRenderer.invoke('db-get-lut', filePath),

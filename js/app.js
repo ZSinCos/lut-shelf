@@ -67,6 +67,8 @@
     settingsCloseBtn: document.getElementById('settingsCloseBtn'),
     themeToggle: document.getElementById('themeToggle'),
     themeLabel: document.getElementById('themeLabel'),
+    thumbRefInput: document.getElementById('thumbRefInput'),
+    thumbRefResetBtn: document.getElementById('thumbRefResetBtn'),
     tagList: document.getElementById('tagList'),
     addTagBtn: document.getElementById('addTagBtn'),
     infoTags: document.getElementById('infoTags'),
@@ -1171,6 +1173,50 @@
   // Restore saved theme
   const savedTheme = localStorage.getItem('lutTheme');
   if (savedTheme === 'light') applyTheme(true);
+
+  /* ── Thumbnail reference image ── */
+
+  async function setThumbRefFromFile(file) {
+    if (!isElectron) return;
+    try {
+      await window.electronAPI.thumbSetSource(file.path);
+      const src = await window.electronAPI.thumbGetSource();
+      if (!src) return;
+      const img = new Image();
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = `data:image/jpeg;base64,${src.data}`; });
+      thumbSourceImg = img;
+      // Clear thumbnail cache and regenerate
+      const thumbDir = null;
+      try {
+        if (isElectron) await window.electronAPI.thumbCacheClear();
+      } catch {}
+      thumbLutCache.clear();
+      // Re-render current shelf thumbnails
+      if (pagination.files.length) renderShelf(pagination.files);
+      setStatus('缩略图参考图已更新');
+    } catch { setStatus('参考图设置失败'); }
+  }
+
+  els.thumbRefInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await setThumbRefFromFile(file);
+    els.settingsOverlay.style.display = 'none';
+  });
+
+  els.thumbRefResetBtn.addEventListener('click', async () => {
+    if (isElectron) {
+      try {
+        await window.electronAPI.thumbSetSource('');
+        await window.electronAPI.thumbCacheClear();
+      } catch {}
+    }
+    thumbSourceImg = await generateDefaultThumbSource();
+    thumbLutCache.clear();
+    if (pagination.files.length) renderShelf(pagination.files);
+    setStatus('已恢复默认参考图');
+    els.settingsOverlay.style.display = 'none';
+  });
 
   /* ── Image handling ── */
 

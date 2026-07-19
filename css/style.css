@@ -524,6 +524,11 @@ header h1 {
   border-bottom: none;
 }
 
+.setting-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .setting-label {
   font-size: 13px;
 }
