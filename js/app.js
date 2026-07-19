@@ -99,33 +99,44 @@
 
   let thumbSourceImg = null;
 
-  async function initThumbSource() {
-    if (!isElectron) return;
-    try {
-      const src = await window.electronAPI.thumbGetSource();
-      if (src) {
-        const img = new Image();
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = `data:image/jpeg;base64,${src.data}`;
-        });
-        thumbSourceImg = img;
-      }
-    } catch (e) {
-      thumbSourceImg = null;
-    }
+  function generateDefaultThumbSource() {
+    const c = document.createElement('canvas');
+    c.width = 800; c.height = 450;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 800, 450);
+    grad.addColorStop(0, '#e74c3c');
+    grad.addColorStop(0.2, '#f39c12');
+    grad.addColorStop(0.4, '#2ecc71');
+    grad.addColorStop(0.6, '#3498db');
+    grad.addColorStop(0.8, '#9b59b6');
+    grad.addColorStop(1, '#e94560');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 800, 450);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('LUT 预览', 400, 180);
+    ctx.font = '16px sans-serif';
+    ctx.fillText('上传参考图以替换此默认图像', 400, 260);
+    const img = new Image();
+    img.src = c.toDataURL();
+    return new Promise((resolve) => { img.onload = () => resolve(img); img.onerror = () => resolve(null); });
   }
 
   (async () => {
     if (isElectron) {
       const existing = await window.electronAPI.thumbGetSource();
-      if (!existing) {
-        const rw2Path = 'E:\\相机照片\\100_PANA\\2026\\2026-07-08\\P1011714.RW2';
-        await window.electronAPI.thumbSetSource(rw2Path);
+      if (existing) {
+        const img = new Image();
+        try {
+          await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = `data:image/jpeg;base64,${existing.data}`; });
+          thumbSourceImg = img;
+        } catch { thumbSourceImg = null; }
       }
     }
-    await initThumbSource();
+    if (!thumbSourceImg) {
+      thumbSourceImg = await generateDefaultThumbSource();
+    }
   })();
 
   function thumbCacheKey(lutName, size, type) {
