@@ -121,7 +121,7 @@
     if (isElectron) {
       const existing = await window.electronAPI.thumbGetSource();
       if (!existing) {
-        const rw2Path = 'C:\\Users\\SinCos\\Desktop\\P1011709.RW2';
+        const rw2Path = 'E:\\相机照片\\100_PANA\\2026\\2026-07-08\\P1011714.RW2';
         await window.electronAPI.thumbSetSource(rw2Path);
       }
     }
